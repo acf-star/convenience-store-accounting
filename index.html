@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0a0a0f">
+  <title>便利店记账</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- 顶部栏 -->
+  <header class="header">
+    <div class="header__title">🏪 便利店记账</div>
+    <div class="header__summary" id="headerSummary"></div>
+  </header>
+
+  <!-- 页面内容 -->
+  <main class="page page--active" id="pageContent"></main>
+
+  <!-- 浮动记账按钮 -->
+  <button class="fab" id="fabBtn" onclick="Transaction.showForm()">+</button>
+
+  <!-- 底部导航 -->
+  <nav class="nav">
+    <button class="nav__item nav__item--active" data-page="transaction">
+      <span class="nav__icon">💰</span>
+      <span>记账</span>
+    </button>
+    <button class="nav__item" data-page="inventory">
+      <span class="nav__icon">📦</span>
+      <span>库存</span>
+    </button>
+    <button class="nav__item" data-page="report">
+      <span class="nav__icon">📊</span>
+      <span>报表</span>
+    </button>
+    <button class="nav__item" data-page="settings">
+      <span class="nav__icon">⚙️</span>
+      <span>设置</span>
+    </button>
+  </nav>
+
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+
+  <!-- 模块加载（顺序很重要：依赖先行） -->
+  <script src="js/utils.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/notify.js"></script>
+  <script src="js/action-menu.js"></script>
+  <script src="js/category.js"></script>
+  <script src="js/transaction.js"></script>
+  <script src="js/inventory.js"></script>
+  <script src="js/report.js"></script>
+  <script src="js/app.js"></script>
+
+</body>
+</html>
