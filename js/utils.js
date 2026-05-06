@@ -7,9 +7,10 @@ const Utils = {
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   },
 
-  /** 获取今天的日期字符串 YYYY-MM-DD */
+  /** 获取今天的日期字符串 YYYY-MM-DD（本地时间） */
   today() {
-    return new Date().toISOString().slice(0, 10);
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   },
 
   /** 格式化金额 */
@@ -23,12 +24,12 @@ const Utils = {
     return `${d.getMonth() + 1}月${d.getDate()}日`;
   },
 
-  /** 获取本周起始日期（周一） */
+  /** 获取本周起始日期（周一，本地时间） */
   getWeekStart() {
     const d = new Date();
     const day = d.getDay() || 7;
     d.setDate(d.getDate() - day + 1);
-    return d.toISOString().slice(0, 10);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   },
 
   /** 获取本月起始日期 */
