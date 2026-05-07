@@ -98,10 +98,23 @@ const Report = {
     this.renderCategoryChart(stats, 'income', 'incomeCategoryChart');
   },
 
+  /** 获取当前主题的图表配色 */
+  _chartColors() {
+    const style = getComputedStyle(document.documentElement);
+    const text = style.getPropertyValue('--text-secondary').trim() || '#6B6B6B';
+    const muted = style.getPropertyValue('--text-muted').trim() || '#A0A0A0';
+    const border = style.getPropertyValue('--border').trim() || '#E8E6E1';
+    const income = style.getPropertyValue('--income').trim() || '#16A34A';
+    const expense = style.getPropertyValue('--expense').trim() || '#DC2626';
+    return { text, muted, border, income, expense };
+  },
+
   /** 渲染趋势图 */
   renderTrendChart(stats) {
     const canvas = document.getElementById('trendChart');
     if (!canvas) return;
+
+    const c = this._chartColors();
 
     // 按日期分组
     const dailyData = {};
@@ -123,24 +136,24 @@ const Report = {
           {
             label: '收入',
             data: incomeData,
-            borderColor: '#00d2a0',
-            backgroundColor: 'rgba(0, 210, 160, 0.08)',
+            borderColor: c.income,
+            backgroundColor: c.income + '12',
             fill: true,
             tension: 0.4,
-            borderWidth: 2,
-            pointRadius: 3,
-            pointBackgroundColor: '#00d2a0'
+            borderWidth: 1.5,
+            pointRadius: 2,
+            pointBackgroundColor: c.income
           },
           {
             label: '支出',
             data: expenseData,
-            borderColor: '#ff6b6b',
-            backgroundColor: 'rgba(255, 107, 107, 0.08)',
+            borderColor: c.expense,
+            backgroundColor: c.expense + '12',
             fill: true,
             tension: 0.4,
-            borderWidth: 2,
-            pointRadius: 3,
-            pointBackgroundColor: '#ff6b6b'
+            borderWidth: 1.5,
+            pointRadius: 2,
+            pointBackgroundColor: c.expense
           }
         ]
       },
@@ -150,18 +163,18 @@ const Report = {
         plugins: {
           legend: {
             position: 'bottom',
-            labels: { color: 'rgba(255,255,255,0.5)', padding: 16, usePointStyle: true, pointStyleWidth: 8 }
+            labels: { color: c.muted, padding: 16, usePointStyle: true, pointStyleWidth: 8, font: { family: "'DM Sans', sans-serif", size: 12 } }
           }
         },
         scales: {
           x: {
-            ticks: { color: 'rgba(255,255,255,0.3)', maxTicksLimit: 8 },
-            grid: { color: 'rgba(255,255,255,0.04)' }
+            ticks: { color: c.muted, maxTicksLimit: 8, font: { family: "'DM Sans', sans-serif", size: 11 } },
+            grid: { color: c.border + '40' }
           },
           y: {
             beginAtZero: true,
-            ticks: { color: 'rgba(255,255,255,0.3)' },
-            grid: { color: 'rgba(255,255,255,0.04)' }
+            ticks: { color: c.muted, font: { family: "'DM Sans', sans-serif", size: 11 } },
+            grid: { color: c.border + '40' }
           }
         }
       }
@@ -172,6 +185,9 @@ const Report = {
   renderCategoryChart(stats, type, canvasId) {
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
+
+    const c = this._chartColors();
+    const bgColor = getComputedStyle(document.documentElement).getPropertyValue('--bg-elevated').trim() || '#FFFFFF';
 
     const filtered = stats.transactions.filter(t => t.type === type);
     const categoryTotals = {};
@@ -196,19 +212,19 @@ const Report = {
         datasets: [{
           data: entries.map(([, v]) => v.amount),
           backgroundColor: entries.map(([, v]) => v.color + 'cc'),
-          borderColor: 'rgba(10,10,15,0.8)',
-          borderWidth: 3,
-          hoverOffset: 6
+          borderColor: bgColor,
+          borderWidth: 2,
+          hoverOffset: 4
         }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        cutout: '65%',
+        cutout: '60%',
         plugins: {
           legend: {
             position: 'bottom',
-            labels: { color: 'rgba(255,255,255,0.5)', padding: 12, usePointStyle: true, pointStyleWidth: 8 }
+            labels: { color: c.muted, padding: 12, usePointStyle: true, pointStyleWidth: 8, font: { family: "'DM Sans', sans-serif", size: 12 } }
           }
         }
       }
