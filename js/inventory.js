@@ -3,8 +3,8 @@
  */
 const Inventory = {
   /** 渲染库存页面 */
-  render() {
-    const items = Store.getInventory();
+  async render() {
+    const items = await Store.getInventory();
     const lowStock = items.filter(i => i.stock <= i.alertThreshold);
 
     return `
@@ -111,7 +111,7 @@ const Inventory = {
   },
 
   /** 保存新商品 */
-  saveNew() {
+  async saveNew() {
     const name = document.getElementById('invName').value.trim();
     if (!name) { Notify.toast('请输入商品名称', 'error'); return; }
 
@@ -119,7 +119,7 @@ const Inventory = {
     const sellingPrice = parseFloat(document.getElementById('invSelling').value) || 0;
     const stock = parseInt(document.getElementById('invStock').value) || 0;
 
-    Store.addInventoryItem({
+    await Store.addInventoryItem({
       id: Utils.genId(),
       name,
       categoryId: document.getElementById('invCategory').value,
@@ -131,12 +131,13 @@ const Inventory = {
 
     this.closeModal();
     Notify.toast(`已添加 ${name}`);
-    App.renderCurrentPage();
+    await App.renderCurrentPage();
   },
 
   /** 显示进货弹窗 */
-  showStockInModal(id) {
-    const item = Store.getInventory().find(i => i.id === id);
+  async showStockInModal(id) {
+    const list = await Store.getInventory();
+    const item = list.find(i => i.id === id);
     if (!item) return;
 
     const html = `
@@ -166,8 +167,9 @@ const Inventory = {
   },
 
   /** 确认进货 */
-  confirmStockIn(id) {
-    const item = Store.getInventory().find(i => i.id === id);
+  async confirmStockIn(id) {
+    const list = await Store.getInventory();
+    const item = list.find(i => i.id === id);
     if (!item) return;
 
     const qty = parseInt(document.getElementById('stockInQty').value) || 0;
@@ -176,9 +178,9 @@ const Inventory = {
 
     if (qty <= 0) { Notify.toast('请输入有效数量', 'error'); return; }
 
-    Store.updateInventoryItem(id, { stock: item.stock + qty, purchasePrice: price });
+    await Store.updateInventoryItem(id, { stock: item.stock + qty, purchasePrice: price });
 
-    Store.addTransaction({
+    await Store.addTransaction({
       id: Utils.genId(),
       date,
       type: 'expense',
@@ -186,18 +188,20 @@ const Inventory = {
       category: item.categoryId,
       productName: `进货: ${item.name} x${qty}`,
       note: `进货 ${qty} 件，单价 ¥${Utils.formatMoney(price)}`,
-      inventoryId: id
+      inventoryId: id,
+      recordedBy: SupabaseConfig.getCurrentUser()
     });
 
     this.closeModal();
     Notify.toast(`已进货 ${item.name} x${qty}`);
-    App.renderCurrentPage();
-    App.updateHeaderSummary();
+    await App.renderCurrentPage();
+    await App.updateHeaderSummary();
   },
 
   /** 销售 */
-  sell(id) {
-    const item = Store.getInventory().find(i => i.id === id);
+  async sell(id) {
+    const list = await Store.getInventory();
+    const item = list.find(i => i.id === id);
     if (!item) return;
 
     if (item.stock <= 0) { Notify.toast('库存不足', 'error'); return; }
@@ -229,8 +233,9 @@ const Inventory = {
   },
 
   /** 确认销售 */
-  confirmSell(id) {
-    const item = Store.getInventory().find(i => i.id === id);
+  async confirmSell(id) {
+    const list = await Store.getInventory();
+    const item = list.find(i => i.id === id);
     if (!item) return;
 
     const qty = parseInt(document.getElementById('sellQty').value) || 0;
@@ -239,9 +244,9 @@ const Inventory = {
 
     if (qty <= 0 || qty > item.stock) { Notify.toast('请输入有效数量', 'error'); return; }
 
-    Store.updateInventoryItem(id, { stock: item.stock - qty, sellingPrice: price });
+    await Store.updateInventoryItem(id, { stock: item.stock - qty, sellingPrice: price });
 
-    Store.addTransaction({
+    await Store.addTransaction({
       id: Utils.genId(),
       date,
       type: 'income',
@@ -249,18 +254,20 @@ const Inventory = {
       category: item.categoryId,
       productName: `销售: ${item.name} x${qty}`,
       note: `销售 ${qty} 件，单价 ¥${Utils.formatMoney(price)}`,
-      inventoryId: id
+      inventoryId: id,
+      recordedBy: SupabaseConfig.getCurrentUser()
     });
 
     this.closeModal();
     Notify.toast(`已销售 ${item.name} x${qty}`);
-    App.renderCurrentPage();
-    App.updateHeaderSummary();
+    await App.renderCurrentPage();
+    await App.updateHeaderSummary();
   },
 
   /** 显示编辑弹窗 */
-  showEditModal(id) {
-    const item = Store.getInventory().find(i => i.id === id);
+  async showEditModal(id) {
+    const list = await Store.getInventory();
+    const item = list.find(i => i.id === id);
     if (!item) return;
 
     const html = `
@@ -306,11 +313,11 @@ const Inventory = {
   },
 
   /** 保存编辑 */
-  saveEdit(id) {
+  async saveEdit(id) {
     const name = document.getElementById('invName').value.trim();
     if (!name) { Notify.toast('请输入商品名称', 'error'); return; }
 
-    Store.updateInventoryItem(id, {
+    await Store.updateInventoryItem(id, {
       name,
       categoryId: document.getElementById('invCategory').value,
       purchasePrice: parseFloat(document.getElementById('invPurchase').value) || 0,
@@ -321,18 +328,19 @@ const Inventory = {
 
     this.closeModal();
     Notify.toast('已更新');
-    App.renderCurrentPage();
+    await App.renderCurrentPage();
   },
 
   /** 确认删除 */
   async confirmDelete(id) {
-    const item = Store.getInventory().find(i => i.id === id);
+    const list = await Store.getInventory();
+    const item = list.find(i => i.id === id);
     if (!item) return;
     const ok = await Notify.confirm('删除商品', `确定删除商品「${item.name}」吗？`);
     if (ok) {
-      Store.deleteInventoryItem(id);
+      await Store.deleteInventoryItem(id);
       Notify.toast('已删除');
-      App.renderCurrentPage();
+      await App.renderCurrentPage();
     }
   },
 

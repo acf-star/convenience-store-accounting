@@ -1,7 +1,12 @@
 /**
  * 分类管理模块
+ *
+ * 使用缓存机制：数据从 Supabase 加载后缓存在内存，
+ * 渲染时同步读取缓存，增删改后自动刷新缓存。
  */
 const Category = {
+  _cache: [],
+
   /** 预设分类 */
   defaults: [
     { id: 'cat_beverage', name: '饮料', icon: '🥤', color: '#2196F3' },
@@ -12,70 +17,69 @@ const Category = {
     { id: 'cat_other', name: '其他', icon: '📦', color: '#607D8B' }
   ],
 
+  /** 从数据库加载到缓存 */
+  async loadFromDB() {
+    this._cache = await Store.getCategories();
+  },
+
   /** 初始化（首次使用时写入预设分类） */
-  init() {
-    const existing = Store.getCategories();
-    if (existing.length === 0) {
-      Store.saveCategories(this.defaults);
+  async init() {
+    await this.loadFromDB();
+    if (this._cache.length === 0) {
+      await Store.saveCategories(this.defaults);
+      await this.loadFromDB();
     }
   },
 
-  /** 获取所有分类 */
+  /** 获取所有分类（同步，从缓存读取） */
   getAll() {
-    return Store.getCategories();
+    return this._cache;
   },
 
-  /** 根据 ID 获取分类 */
+  /** 根据 ID 获取分类（同步，从缓存读取） */
   getById(id) {
-    return this.getAll().find(c => c.id === id);
+    return this._cache.find(c => c.id === id);
   },
 
   /** 添加分类 */
-  add(name, icon, color) {
+  async add(name, icon, color) {
     const cat = {
       id: 'cat_' + Utils.genId(),
       name,
       icon: icon || '📦',
       color: color || '#607D8B'
     };
-    const list = this.getAll();
-    list.push(cat);
-    Store.saveCategories(list);
+    await Store.saveCategories([...this._cache, cat]);
+    await this.loadFromDB();
     return cat;
   },
 
   /** 更新分类 */
-  update(id, updates) {
-    const list = this.getAll();
-    const idx = list.findIndex(c => c.id === id);
-    if (idx !== -1) {
-      list[idx] = { ...list[idx], ...updates };
-      Store.saveCategories(list);
-      return list[idx];
-    }
-    return null;
+  async update(id, updates) {
+    const list = this._cache.map(c => c.id === id ? { ...c, ...updates } : c);
+    await Store.saveCategories(list);
+    await this.loadFromDB();
   },
 
   /** 删除分类 */
-  delete(id) {
-    const list = this.getAll().filter(c => c.id !== id);
-    Store.saveCategories(list);
+  async delete(id) {
+    const list = this._cache.filter(c => c.id !== id);
+    await Store.saveCategories(list);
+    await this.loadFromDB();
   },
 
-  /** 渲染分类选择下拉框 */
+  /** 渲染分类选择下拉框（同步） */
   renderSelect(selectedId) {
-    const cats = this.getAll();
-    return cats.map(c =>
+    return this._cache.map(c =>
       `<option value="${c.id}" ${c.id === selectedId ? 'selected' : ''}>${c.icon} ${c.name}</option>`
     ).join('');
   },
 
-  /** 渲染分类管理列表 */
+  /** 渲染分类管理列表（同步） */
   renderList() {
-    const cats = this.getAll();
-    if (cats.length === 0) return '<div class="empty">暂无分类</div>';
+    if (this._cache.length === 0) return '<div class="empty">暂无分类</div>';
 
-    return cats.map(c => `
+    return this._cache.map(c => `
       <div class="stock-item" data-id="${c.id}">
         <div class="transaction-item__icon" style="background:${c.color}20;color:${c.color}">${c.icon}</div>
         <div class="stock-item__info">
@@ -118,15 +122,15 @@ const Category = {
   },
 
   /** 保存新分类 */
-  saveNew() {
+  async saveNew() {
     const name = document.getElementById('catName').value.trim();
     if (!name) { Notify.toast('请输入分类名称', 'error'); return; }
     const icon = document.getElementById('catIcon').value || '📦';
     const color = document.getElementById('catColor').value;
-    this.add(name, icon, color);
+    await this.add(name, icon, color);
     this.closeModal();
     Notify.toast(`已添加分类「${name}」`);
-    App.renderCurrentPage();
+    await App.renderCurrentPage();
   },
 
   /** 显示编辑弹窗 */
@@ -160,17 +164,17 @@ const Category = {
   },
 
   /** 保存编辑 */
-  saveEdit(id) {
+  async saveEdit(id) {
     const name = document.getElementById('catName').value.trim();
     if (!name) { Notify.toast('请输入分类名称', 'error'); return; }
-    this.update(id, {
+    await this.update(id, {
       name,
       icon: document.getElementById('catIcon').value || '📦',
       color: document.getElementById('catColor').value
     });
     this.closeModal();
     Notify.toast('已更新');
-    App.renderCurrentPage();
+    await App.renderCurrentPage();
   },
 
   /** 确认删除 */
@@ -179,9 +183,9 @@ const Category = {
     if (!cat) return;
     const ok = await Notify.confirm('删除分类', `确定删除分类「${cat.name}」吗？`);
     if (ok) {
-      this.delete(id);
+      await this.delete(id);
       Notify.toast('已删除');
-      App.renderCurrentPage();
+      await App.renderCurrentPage();
     }
   },
 

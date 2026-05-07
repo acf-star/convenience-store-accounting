@@ -5,8 +5,8 @@ const Report = {
   currentPeriod: 'month',
 
   /** 渲染报表页面 */
-  render() {
-    const stats = this.getStats(this.currentPeriod);
+  async render() {
+    const stats = await this.getStats(this.currentPeriod);
 
     return `
       <div class="tabs">
@@ -63,13 +63,13 @@ const Report = {
   },
 
   /** 设置时间维度 */
-  setPeriod(period) {
+  async setPeriod(period) {
     this.currentPeriod = period;
-    App.renderCurrentPage();
+    await App.renderCurrentPage();
   },
 
   /** 获取统计数据 */
-  getStats(period) {
+  async getStats(period) {
     let dateFrom;
     switch (period) {
       case 'today': dateFrom = Utils.today(); break;
@@ -79,7 +79,7 @@ const Report = {
       default: dateFrom = Utils.getMonthStart();
     }
 
-    const transactions = Transaction.getFiltered({
+    const transactions = await Transaction.getFiltered({
       dateFrom,
       dateTo: Utils.today()
     });
@@ -91,8 +91,8 @@ const Report = {
   },
 
   /** 渲染图表（在 DOM 插入后调用） */
-  renderCharts() {
-    const stats = this.getStats(this.currentPeriod);
+  async renderCharts() {
+    const stats = await this.getStats(this.currentPeriod);
     this.renderTrendChart(stats);
     this.renderCategoryChart(stats, 'expense', 'categoryChart');
     this.renderCategoryChart(stats, 'income', 'incomeCategoryChart');
@@ -116,7 +116,6 @@ const Report = {
 
     const c = this._chartColors();
 
-    // 按日期分组
     const dailyData = {};
     stats.transactions.forEach(t => {
       if (!dailyData[t.date]) dailyData[t.date] = { income: 0, expense: 0 };
@@ -232,8 +231,8 @@ const Report = {
   },
 
   /** 导出交易记录 CSV */
-  exportTransactions() {
-    const transactions = Store.getTransactions();
+  async exportTransactions() {
+    const transactions = await Store.getTransactions();
     const data = transactions.map(t => {
       const cat = Category.getById(t.category);
       return {
@@ -242,14 +241,16 @@ const Report = {
         金额: t.amount,
         分类: cat ? cat.name : '未分类',
         商品名: t.productName || '',
-        备注: t.note || ''
+        备注: t.note || '',
+        记录人: t.recordedBy || ''
       };
     });
     Utils.exportCSV(data, `交易记录_${Utils.today()}.csv`);
   },
 
   /** 导出全部数据 JSON */
-  exportAll() {
-    Utils.exportJSON(Store.backup(), `便利店数据备份_${Utils.today()}.json`);
+  async exportAll() {
+    const backup = await Store.backup();
+    Utils.exportJSON(backup, `便利店数据备份_${Utils.today()}.json`);
   }
 };

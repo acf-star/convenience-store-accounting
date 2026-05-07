@@ -5,11 +5,16 @@ const Transaction = {
   currentType: 'income',
 
   /** 渲染记账页面 — 概览 + 最近记录 */
-  render() {
-    const todayTx = this.getFiltered({ dateFrom: Utils.today(), dateTo: Utils.today() });
+  async render() {
+    const todayTx = await this.getFiltered({ dateFrom: Utils.today(), dateTo: Utils.today() });
     const todayIncome = todayTx.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
     const todayExpense = todayTx.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
     const todayProfit = todayIncome - todayExpense;
+
+    const filtered = await this.getFiltered({
+      dateFrom: Utils.getMonthStart(),
+      dateTo: Utils.today()
+    });
 
     return `
       <div class="stats-row">
@@ -39,7 +44,7 @@ const Transaction = {
             ${Category.renderSelect('')}
           </select>
         </div>
-        <div id="transactionList"></div>
+        <div id="transactionList">${this.renderList(filtered)}</div>
       </div>
     `;
   },
@@ -107,7 +112,7 @@ const Transaction = {
   },
 
   /** 保存交易 */
-  save() {
+  async save() {
     const amount = parseFloat(document.getElementById('txAmount').value);
     if (!amount || amount <= 0) { Notify.toast('请输入有效金额', 'error'); return; }
 
@@ -119,19 +124,20 @@ const Transaction = {
       category: document.getElementById('txCategory').value,
       productName: document.getElementById('txProduct').value.trim(),
       note: document.getElementById('txNote').value.trim(),
-      inventoryId: null
+      inventoryId: null,
+      recordedBy: SupabaseConfig.getCurrentUser()
     };
 
-    Store.addTransaction(tx);
+    await Store.addTransaction(tx);
     this.closeForm();
     Notify.toast(`已记录 ${tx.type === 'income' ? '收入' : '支出'} ¥${Utils.formatMoney(amount)}`);
-    this.refreshList();
-    App.updateHeaderSummary();
+    await this.refreshList();
+    await App.updateHeaderSummary();
   },
 
   /** 按条件筛选交易 */
-  getFiltered({ dateFrom, dateTo, category, keyword } = {}) {
-    let list = Store.getTransactions();
+  async getFiltered({ dateFrom, dateTo, category, keyword } = {}) {
+    let list = await Store.getTransactions();
     if (dateFrom) list = list.filter(t => t.date >= dateFrom);
     if (dateTo) list = list.filter(t => t.date <= dateTo);
     if (category) list = list.filter(t => t.category === category);
@@ -146,12 +152,12 @@ const Transaction = {
   },
 
   /** 应用筛选 */
-  applyFilter() {
-    this.refreshList();
+  async applyFilter() {
+    await this.refreshList();
   },
 
   /** 刷新交易列表 */
-  refreshList() {
+  async refreshList() {
     const container = document.getElementById('transactionList');
     if (!container) return;
 
@@ -159,7 +165,7 @@ const Transaction = {
     const dateTo = document.getElementById('filterDateTo')?.value;
     const category = document.getElementById('filterCategory')?.value;
 
-    const filtered = this.getFiltered({ dateFrom, dateTo, category });
+    const filtered = await this.getFiltered({ dateFrom, dateTo, category });
     container.innerHTML = this.renderList(filtered);
   },
 
@@ -200,12 +206,13 @@ const Transaction = {
     const catName = cat ? cat.name : '未分类';
     const sign = tx.type === 'income' ? '+' : '-';
     const amountClass = tx.type === 'income' ? 'transaction-item__amount--income' : 'transaction-item__amount--expense';
+    const userTag = tx.recordedBy ? `<span class="tx-user-tag">${tx.recordedBy}</span>` : '';
 
     return `
       <li class="transaction-item">
         <div class="transaction-item__icon" style="background:${color}20;color:${color}">${icon}</div>
         <div class="transaction-item__info">
-          <div class="transaction-item__name">${tx.productName || catName}</div>
+          <div class="transaction-item__name">${tx.productName || catName} ${userTag}</div>
           <div class="transaction-item__meta">${catName}${tx.note ? ' · ' + tx.note : ''}</div>
         </div>
         <div class="transaction-item__amount ${amountClass}">${sign}¥${Utils.formatMoney(tx.amount)}</div>
@@ -221,8 +228,9 @@ const Transaction = {
   },
 
   /** 编辑交易 */
-  edit(id) {
-    const tx = Store.getTransactions().find(t => t.id === id);
+  async edit(id) {
+    const list = await Store.getTransactions();
+    const tx = list.find(t => t.id === id);
     if (!tx) return;
 
     const html = `
@@ -269,11 +277,11 @@ const Transaction = {
   editType: 'income',
 
   /** 保存编辑 */
-  saveEdit(id) {
+  async saveEdit(id) {
     const amount = parseFloat(document.getElementById('editAmount').value);
     if (!amount || amount <= 0) { Notify.toast('请输入有效金额', 'error'); return; }
 
-    Store.updateTransaction(id, {
+    await Store.updateTransaction(id, {
       date: document.getElementById('editDate').value,
       type: this.editType,
       amount,
@@ -284,18 +292,18 @@ const Transaction = {
 
     this.closeEditModal();
     Notify.toast('已更新');
-    this.refreshList();
-    App.updateHeaderSummary();
+    await this.refreshList();
+    await App.updateHeaderSummary();
   },
 
   /** 确认删除 */
   async confirmDelete(id) {
     const ok = await Notify.confirm('删除交易', '确定要删除这笔交易记录吗？');
     if (ok) {
-      Store.deleteTransaction(id);
+      await Store.deleteTransaction(id);
       Notify.toast('已删除');
-      this.refreshList();
-      App.updateHeaderSummary();
+      await this.refreshList();
+      await App.updateHeaderSummary();
     }
   },
 

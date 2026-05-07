@@ -1,125 +1,219 @@
 /**
- * 数据存储层 - localStorage 封装
+ * 数据存储层 - Supabase 封装
+ *
+ * 所有方法均为 async，返回 Promise。
+ * JS 对象用 camelCase，数据库列用 snake_case，读写时自动转换。
  */
 const Store = {
-  KEYS: {
-    TRANSACTIONS: 'csa_transactions',
-    CATEGORIES: 'csa_categories',
-    INVENTORY: 'csa_inventory',
-    SETTINGS: 'csa_settings'
-  },
+  // ── 字段映射 ──────────────────────────────────────────────
 
-  /** 获取数据 */
-  get(key) {
-    try {
-      const data = localStorage.getItem(key);
-      return data ? JSON.parse(data) : null;
-    } catch {
-      return null;
-    }
-  },
-
-  /** 保存数据 */
-  set(key, value) {
-    localStorage.setItem(key, JSON.stringify(value));
-  },
-
-  /** 获取交易记录 */
-  getTransactions() {
-    return this.get(this.KEYS.TRANSACTIONS) || [];
-  },
-
-  /** 保存交易记录 */
-  saveTransactions(list) {
-    this.set(this.KEYS.TRANSACTIONS, list);
-  },
-
-  /** 添加交易记录 */
-  addTransaction(tx) {
-    const list = this.getTransactions();
-    list.push(tx);
-    this.saveTransactions(list);
-    return tx;
-  },
-
-  /** 更新交易记录 */
-  updateTransaction(id, updates) {
-    const list = this.getTransactions();
-    const idx = list.findIndex(t => t.id === id);
-    if (idx !== -1) {
-      list[idx] = { ...list[idx], ...updates };
-      this.saveTransactions(list);
-      return list[idx];
-    }
-    return null;
-  },
-
-  /** 删除交易记录 */
-  deleteTransaction(id) {
-    const list = this.getTransactions().filter(t => t.id !== id);
-    this.saveTransactions(list);
-  },
-
-  /** 获取分类列表 */
-  getCategories() {
-    return this.get(this.KEYS.CATEGORIES) || [];
-  },
-
-  /** 保存分类列表 */
-  saveCategories(list) {
-    this.set(this.KEYS.CATEGORIES, list);
-  },
-
-  /** 获取库存列表 */
-  getInventory() {
-    return this.get(this.KEYS.INVENTORY) || [];
-  },
-
-  /** 保存库存列表 */
-  saveInventory(list) {
-    this.set(this.KEYS.INVENTORY, list);
-  },
-
-  /** 添加库存商品 */
-  addInventoryItem(item) {
-    const list = this.getInventory();
-    list.push(item);
-    this.saveInventory(list);
-    return item;
-  },
-
-  /** 更新库存商品 */
-  updateInventoryItem(id, updates) {
-    const list = this.getInventory();
-    const idx = list.findIndex(i => i.id === id);
-    if (idx !== -1) {
-      list[idx] = { ...list[idx], ...updates };
-      this.saveInventory(list);
-      return list[idx];
-    }
-    return null;
-  },
-
-  /** 删除库存商品 */
-  deleteInventoryItem(id) {
-    const list = this.getInventory().filter(i => i.id !== id);
-    this.saveInventory(list);
-  },
-
-  /** 备份所有数据 */
-  backup() {
+  _txToDb(tx) {
     return {
-      transactions: this.getTransactions(),
-      categories: this.getCategories(),
-      inventory: this.getInventory(),
-      exportDate: new Date().toISOString()
+      id: tx.id,
+      date: tx.date,
+      type: tx.type,
+      amount: tx.amount,
+      category: tx.category,
+      product_name: tx.productName || null,
+      note: tx.note || null,
+      inventory_id: tx.inventoryId || null,
+      recorded_by: tx.recordedBy || null
     };
   },
 
-  /** 恢复数据 */
-  restore(data) {
-    if (data.transactions) this.saveTransactions(data.transactions);
-    if (data.categories) this.saveCategories(data.categories);
-    if (data.inventory) this.saveInventory(data.inventory);
+  _txFromDb(row) {
+    return {
+      id: row.id,
+      date: row.date,
+      type: row.type,
+      amount: row.amount,
+      category: row.category,
+      productName: row.product_name || '',
+      note: row.note || '',
+      inventoryId: row.inventory_id || null,
+      recordedBy: row.recorded_by || ''
+    };
+  },
+
+  _catToDb(cat) {
+    return { id: cat.id, name: cat.name, icon: cat.icon, color: cat.color };
+  },
+
+  _catFromDb(row) {
+    return { id: row.id, name: row.name, icon: row.icon, color: row.color };
+  },
+
+  _invToDb(item) {
+    return {
+      id: item.id,
+      name: item.name,
+      category_id: item.categoryId,
+      purchase_price: item.purchasePrice,
+      selling_price: item.sellingPrice,
+      stock: item.stock,
+      alert_threshold: item.alertThreshold
+    };
+  },
+
+  _invFromDb(row) {
+    return {
+      id: row.id,
+      name: row.name,
+      categoryId: row.category_id,
+      purchasePrice: row.purchase_price,
+      sellingPrice: row.sellingPrice,
+      stock: row.stock,
+      alertThreshold: row.alert_threshold
+    };
+  },
+
+  // ── 交易记录 ──────────────────────────────────────────────
+
+  async getTransactions() {
+    const { data, error } = await SupabaseConfig.client
+      .from('transactions')
+      .select('*')
+      .order('date', { ascending: false })
+      .order('id', { ascending: false });
+    if (error) throw error;
+    return data.map(r => this._txFromDb(r));
+  },
+
+  async addTransaction(tx) {
+    const { data, error } = await SupabaseConfig.client
+      .from('transactions')
+      .insert(this._txToDb(tx))
+      .select()
+      .single();
+    if (error) throw error;
+    return this._txFromDb(data);
+  },
+
+  async updateTransaction(id, updates) {
+    const dbUpdates = {};
+    if (updates.date !== undefined) dbUpdates.date = updates.date;
+    if (updates.type !== undefined) dbUpdates.type = updates.type;
+    if (updates.amount !== undefined) dbUpdates.amount = updates.amount;
+    if (updates.category !== undefined) dbUpdates.category = updates.category;
+    if (updates.productName !== undefined) dbUpdates.product_name = updates.productName;
+    if (updates.note !== undefined) dbUpdates.note = updates.note;
+    if (updates.inventoryId !== undefined) dbUpdates.inventory_id = updates.inventoryId;
+    if (updates.recordedBy !== undefined) dbUpdates.recorded_by = updates.recordedBy;
+
+    const { data, error } = await SupabaseConfig.client
+      .from('transactions')
+      .update(dbUpdates)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return this._txFromDb(data);
+  },
+
+  async deleteTransaction(id) {
+    const { error } = await SupabaseConfig.client
+      .from('transactions')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
+  },
+
+  // ── 分类 ──────────────────────────────────────────────────
+
+  async getCategories() {
+    const { data, error } = await SupabaseConfig.client
+      .from('categories')
+      .select('*')
+      .order('id');
+    if (error) throw error;
+    return data.map(r => this._catFromDb(r));
+  },
+
+  async saveCategories(list) {
+    const { error } = await SupabaseConfig.client
+      .from('categories')
+      .upsert(list.map(c => this._catToDb(c)));
+    if (error) throw error;
+  },
+
+  // ── 库存 ──────────────────────────────────────────────────
+
+  async getInventory() {
+    const { data, error } = await SupabaseConfig.client
+      .from('inventory')
+      .select('*')
+      .order('name');
+    if (error) throw error;
+    return data.map(r => this._invFromDb(r));
+  },
+
+  async addInventoryItem(item) {
+    const { data, error } = await SupabaseConfig.client
+      .from('inventory')
+      .insert(this._invToDb(item))
+      .select()
+      .single();
+    if (error) throw error;
+    return this._invFromDb(data);
+  },
+
+  async updateInventoryItem(id, updates) {
+    const dbUpdates = {};
+    if (updates.name !== undefined) dbUpdates.name = updates.name;
+    if (updates.categoryId !== undefined) dbUpdates.category_id = updates.categoryId;
+    if (updates.purchasePrice !== undefined) dbUpdates.purchase_price = updates.purchasePrice;
+    if (updates.sellingPrice !== undefined) dbUpdates.selling_price = updates.sellingPrice;
+    if (updates.stock !== undefined) dbUpdates.stock = updates.stock;
+    if (updates.alertThreshold !== undefined) dbUpdates.alert_threshold = updates.alertThreshold;
+
+    const { data, error } = await SupabaseConfig.client
+      .from('inventory')
+      .update(dbUpdates)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return this._invFromDb(data);
+  },
+
+  async deleteInventoryItem(id) {
+    const { error } = await SupabaseConfig.client
+      .from('inventory')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
+  },
+
+  // ── 备份 / 恢复 ──────────────────────────────────────────
+
+  async backup() {
+    const [transactions, categories, inventory] = await Promise.all([
+      this.getTransactions(),
+      this.getCategories(),
+      this.getInventory()
+    ]);
+    return { transactions, categories, inventory, exportDate: new Date().toISOString() };
+  },
+
+  async restore(data) {
+    if (data.categories) await this.saveCategories(data.categories);
+    if (data.inventory) {
+      await SupabaseConfig.client.from('inventory').delete().neq('id', '');
+      for (const item of data.inventory) {
+        await this.addInventoryItem(item);
+      }
+    }
+    if (data.transactions) {
+      await SupabaseConfig.client.from('transactions').delete().neq('id', '');
+      for (const tx of data.transactions) {
+        await this.addTransaction(tx);
+      }
+    }
+  },
+
+  async clearAll() {
+    await SupabaseConfig.client.from('transactions').delete().neq('id', '');
+    await SupabaseConfig.client.from('inventory').delete().neq('id', '');
+    await SupabaseConfig.client.from('categories').delete().neq('id', '');
   }
 };
