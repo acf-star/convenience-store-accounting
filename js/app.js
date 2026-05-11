@@ -224,7 +224,10 @@ const App = {
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
           <div class="card__title" style="margin-bottom:0">分类管理</div>
-          <button class="btn btn--primary btn--small" onclick="Category.showAddModal()">+ 添加</button>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn--outline btn--small" onclick="App.resetCategories()">重置</button>
+            <button class="btn btn--primary btn--small" onclick="Category.showAddModal()">+ 添加</button>
+          </div>
         </div>
         <div id="categoryListContainer">${Category.renderList()}</div>
       </div>
@@ -252,6 +255,15 @@ const App = {
     if (!name) { Notify.toast('请输入姓名', 'error'); return; }
     SupabaseConfig.setCurrentUser(name);
     Notify.toast(`已切换为「${name}」`);
+  },
+
+  /** 重置分类为默认 */
+  async resetCategories() {
+    const ok = await Notify.confirm('重置分类', '将清除所有自定义分类，恢复为默认分类。确定继续吗？');
+    if (!ok) return;
+    await Category.resetToDefaults();
+    Notify.toast('已重置为默认分类');
+    await this.renderCurrentPage();
   },
 
   /** 导入数据 */

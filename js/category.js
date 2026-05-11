@@ -12,15 +12,18 @@ const Category = {
     { id: 'cat_beverage', name: '饮料', icon: '🥤', color: '#2196F3' },
     { id: 'cat_snack', name: '零食', icon: '🍪', color: '#FF9800' },
     { id: 'cat_daily', name: '日用品', icon: '🧴', color: '#9C27B0' },
-    { id: 'cat_tobacco', name: '烟草', icon: '🚬', color: '#795548' },
+    { id: 'cat_tobacco', name: '烟酒', icon: '🍺', color: '#795548' },
     { id: 'cat_fresh', name: '生鲜', icon: '🥬', color: '#4CAF50' },
+    { id: 'cat_personal', name: '个人护理', icon: '🧼', color: '#E91E63' },
+    { id: 'cat_stationery', name: '文具', icon: '✏️', color: '#3F51B5' },
     { id: 'cat_other', name: '其他', icon: '📦', color: '#607D8B' }
   ],
 
   /** 预设颜色表 */
   _defaultColors: {
     cat_beverage: '#2196F3', cat_snack: '#FF9800', cat_daily: '#9C27B0',
-    cat_tobacco: '#795548', cat_fresh: '#4CAF50', cat_other: '#607D8B'
+    cat_tobacco: '#795548', cat_fresh: '#4CAF50', cat_personal: '#E91E63',
+    cat_stationery: '#3F51B5', cat_other: '#607D8B'
   },
 
   /** 获取颜色：预设 > 用户保存 > hash 生成 */
@@ -234,6 +237,12 @@ const Category = {
         Notify.toast(e.message, 'error');
       }
     }
+  },
+
+  /** 重置为默认分类 */
+  async resetToDefaults() {
+    await Store.saveCategories(this.defaults);
+    await this.loadFromDB();
   },
 
   /** 关闭弹窗 */
