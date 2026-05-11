@@ -5,6 +5,29 @@
  * JS 对象用 camelCase，数据库列用 snake_case，读写时自动转换。
  */
 const Store = {
+  // ── 会话管理 ──────────────────────────────────────────────
+
+  /** 确保会话有效，过期则尝试刷新 */
+  async _ensureSession() {
+    const { data: { session } } = await SupabaseConfig.client.auth.getSession();
+    if (session) return true;
+    const { data: { session: refreshed } } = await SupabaseConfig.client.auth.refreshSession();
+    if (refreshed) return true;
+    if (typeof Notify !== 'undefined') Notify.toast('登录已过期，请重新登录', 'error');
+    return false;
+  },
+
+  /** 包装写操作：失败时刷新会话重试一次 */
+  async _write(fn) {
+    let result = await fn();
+    if (result.error) {
+      await this._ensureSession();
+      result = await fn();
+    }
+    if (result.error) throw result.error;
+    return result;
+  },
+
   // ── 字段映射 ──────────────────────────────────────────────
 
   _txToDb(tx) {
@@ -59,7 +82,7 @@ const Store = {
       name: row.name,
       categoryId: row.category_id,
       purchasePrice: row.purchase_price,
-      sellingPrice: row.sellingPrice,
+      sellingPrice: row.selling_price,
       stock: row.stock,
       alertThreshold: row.alert_threshold
     };
@@ -78,13 +101,10 @@ const Store = {
   },
 
   async addTransaction(tx) {
-    const { data, error } = await SupabaseConfig.client
-      .from('transactions')
-      .insert(this._txToDb(tx))
-      .select()
-      .single();
-    if (error) throw error;
-    return this._txFromDb(data);
+    const result = await this._write(() =>
+      SupabaseConfig.client.from('transactions').insert(this._txToDb(tx)).select().single()
+    );
+    return this._txFromDb(result.data);
   },
 
   async updateTransaction(id, updates) {
@@ -97,22 +117,16 @@ const Store = {
     if (updates.note !== undefined) dbUpdates.note = updates.note;
     if (updates.recordedBy !== undefined) dbUpdates.recorded_by = updates.recordedBy;
 
-    const { data, error } = await SupabaseConfig.client
-      .from('transactions')
-      .update(dbUpdates)
-      .eq('id', id)
-      .select()
-      .single();
-    if (error) throw error;
-    return this._txFromDb(data);
+    const result = await this._write(() =>
+      SupabaseConfig.client.from('transactions').update(dbUpdates).eq('id', id).select().single()
+    );
+    return this._txFromDb(result.data);
   },
 
   async deleteTransaction(id) {
-    const { error } = await SupabaseConfig.client
-      .from('transactions')
-      .delete()
-      .eq('id', id);
-    if (error) throw error;
+    await this._write(() =>
+      SupabaseConfig.client.from('transactions').delete().eq('id', id)
+    );
   },
 
   // ── 分类 ──────────────────────────────────────────────────
@@ -127,25 +141,25 @@ const Store = {
   },
 
   async saveCategories(list) {
-    // 获取数据库中现有的分类
-    const { data: existing } = await SupabaseConfig.client.from('categories').select('*');
+    const { data: existing, error: readErr } = await SupabaseConfig.client.from('categories').select('*');
+    if (readErr) throw readErr;
     const existingIds = new Set((existing || []).map(r => r.id));
     const keepIds = new Set(list.map(c => c.id));
 
     // 删除数据库中有但新列表中没有的
     for (const id of existingIds) {
       if (!keepIds.has(id)) {
-        const { error } = await SupabaseConfig.client.from('categories').delete().eq('id', id);
-        if (error) throw error;
+        await this._write(() =>
+          SupabaseConfig.client.from('categories').delete().eq('id', id)
+        );
       }
     }
 
-    // 插入或更新新列表中的分类
+    // upsert 新列表
     if (list.length > 0) {
-      const { error } = await SupabaseConfig.client
-        .from('categories')
-        .upsert(list.map(c => this._catToDb(c)));
-      if (error) throw error;
+      await this._write(() =>
+        SupabaseConfig.client.from('categories').upsert(list.map(c => this._catToDb(c)))
+      );
     }
   },
 
@@ -161,13 +175,10 @@ const Store = {
   },
 
   async addInventoryItem(item) {
-    const { data, error } = await SupabaseConfig.client
-      .from('inventory')
-      .insert(this._invToDb(item))
-      .select()
-      .single();
-    if (error) throw error;
-    return this._invFromDb(data);
+    const result = await this._write(() =>
+      SupabaseConfig.client.from('inventory').insert(this._invToDb(item)).select().single()
+    );
+    return this._invFromDb(result.data);
   },
 
   async updateInventoryItem(id, updates) {
@@ -179,33 +190,19 @@ const Store = {
     if (updates.stock !== undefined) dbUpdates.stock = updates.stock;
     if (updates.alertThreshold !== undefined) dbUpdates.alert_threshold = updates.alertThreshold;
 
-    const { data, error } = await SupabaseConfig.client
-      .from('inventory')
-      .update(dbUpdates)
-      .eq('id', id)
-      .select()
-      .single();
-    if (error) throw error;
-    return this._invFromDb(data);
+    const result = await this._write(() =>
+      SupabaseConfig.client.from('inventory').update(dbUpdates).eq('id', id).select().single()
+    );
+    return this._invFromDb(result.data);
   },
 
   async deleteInventoryItem(id) {
-    const { error } = await SupabaseConfig.client
-      .from('inventory')
-      .delete()
-      .eq('id', id);
-    if (error) throw error;
+    await this._write(() =>
+      SupabaseConfig.client.from('inventory').delete().eq('id', id)
+    );
   },
 
   // ── 备份 / 恢复 ──────────────────────────────────────────
-
-  /** 按 ID 逐条删除表中所有数据（绕过 RLS 全表删除限制） */
-  async _deleteAll(table) {
-    const { data } = await SupabaseConfig.client.from(table).select('id');
-    for (const row of (data || [])) {
-      await SupabaseConfig.client.from(table).delete().eq('id', row.id);
-    }
-  },
 
   async backup() {
     const [transactions, categories, inventory] = await Promise.all([
@@ -219,22 +216,21 @@ const Store = {
   async restore(data) {
     if (data.categories) await this.saveCategories(data.categories);
     if (data.inventory) {
-      await this._deleteAll('inventory');
-      for (const item of data.inventory) {
-        await this.addInventoryItem(item);
-      }
+      const { data: rows } = await SupabaseConfig.client.from('inventory').select('id');
+      for (const row of (rows || [])) await this._write(() => SupabaseConfig.client.from('inventory').delete().eq('id', row.id));
+      for (const item of data.inventory) await this.addInventoryItem(item);
     }
     if (data.transactions) {
-      await this._deleteAll('transactions');
-      for (const tx of data.transactions) {
-        await this.addTransaction(tx);
-      }
+      const { data: rows } = await SupabaseConfig.client.from('transactions').select('id');
+      for (const row of (rows || [])) await this._write(() => SupabaseConfig.client.from('transactions').delete().eq('id', row.id));
+      for (const tx of data.transactions) await this.addTransaction(tx);
     }
   },
 
   async clearAll() {
-    await this._deleteAll('transactions');
-    await this._deleteAll('inventory');
-    await this._deleteAll('categories');
+    for (const table of ['transactions', 'inventory', 'categories']) {
+      const { data: rows } = await SupabaseConfig.client.from(table).select('id');
+      for (const row of (rows || [])) await this._write(() => SupabaseConfig.client.from(table).delete().eq('id', row.id));
+    }
   }
 };
