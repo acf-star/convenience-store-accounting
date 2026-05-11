@@ -127,13 +127,23 @@ const Store = {
   },
 
   async saveCategories(list) {
+    // 先备份旧数据，insert 失败时可恢复
+    const { data: backup } = await SupabaseConfig.client.from('categories').select('*');
+
     const { error: delError } = await SupabaseConfig.client.from('categories').delete().not('id', 'is', null);
     if (delError) throw delError;
+
     if (list.length > 0) {
       const { error } = await SupabaseConfig.client
         .from('categories')
         .insert(list.map(c => this._catToDb(c)));
-      if (error) throw error;
+      if (error) {
+        // insert 失败，尝试恢复旧数据
+        if (backup && backup.length > 0) {
+          await SupabaseConfig.client.from('categories').insert(backup);
+        }
+        throw error;
+      }
     }
   },
 
