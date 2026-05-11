@@ -103,6 +103,12 @@ const Utils = {
     });
   },
 
+  /** 转义 HTML 特殊字符（防 XSS） */
+  escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  },
+
   /** 简单 debounce */
   debounce(fn, delay = 300) {
     let timer;

@@ -80,15 +80,20 @@ const Report = {
       default: dateFrom = Utils.getMonthStart();
     }
 
-    const transactions = await Transaction.getFiltered({
-      dateFrom,
-      dateTo: Utils.today()
-    });
+    try {
+      const transactions = await Transaction.getFiltered({
+        dateFrom,
+        dateTo: Utils.today()
+      });
 
-    const income = transactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-    const expense = transactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+      const income = transactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+      const expense = transactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
 
-    return { transactions, income, expense, profit: income - expense };
+      return { transactions, income, expense, profit: income - expense };
+    } catch (e) {
+      Notify.toast('加载报表数据失败', 'error');
+      return { transactions: [], income: 0, expense: 0, profit: 0 };
+    }
   },
 
   /** 渲染图表（在 DOM 插入后调用） */

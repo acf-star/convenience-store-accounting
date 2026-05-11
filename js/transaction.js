@@ -113,8 +113,11 @@ const Transaction = {
 
   /** 保存交易 */
   async save() {
+    if (this._saving) return;
+    this._saving = true;
+
     const amount = parseFloat(document.getElementById('txAmount').value);
-    if (!amount || amount <= 0) { Notify.toast('请输入有效金额', 'error'); return; }
+    if (!amount || amount <= 0) { Notify.toast('请输入有效金额', 'error'); this._saving = false; return; }
 
     const tx = {
       id: Utils.genId(),
@@ -135,6 +138,8 @@ const Transaction = {
       await App.updateHeaderSummary();
     } catch (e) {
       Notify.toast('保存失败：' + (e.message || '网络错误'), 'error');
+    } finally {
+      this._saving = false;
     }
   },
 
@@ -206,17 +211,19 @@ const Transaction = {
     const cat = Category.getById(tx.category);
     const icon = cat ? cat.icon : '📦';
     const color = cat ? cat.color : '#607D8B';
-    const catName = cat ? cat.name : '未分类';
+    const catName = Utils.escapeHtml(cat ? cat.name : '未分类');
     const sign = tx.type === 'income' ? '+' : '-';
     const amountClass = tx.type === 'income' ? 'transaction-item__amount--income' : 'transaction-item__amount--expense';
-    const userTag = tx.recordedBy ? `<span class="tx-user-tag">${tx.recordedBy}</span>` : '';
+    const userTag = tx.recordedBy ? `<span class="tx-user-tag">${Utils.escapeHtml(tx.recordedBy)}</span>` : '';
+    const productName = Utils.escapeHtml(tx.productName) || catName;
+    const note = Utils.escapeHtml(tx.note);
 
     return `
       <li class="transaction-item">
         <div class="transaction-item__icon" style="background:${color}20;color:${color}">${icon}</div>
         <div class="transaction-item__info">
-          <div class="transaction-item__name">${tx.productName || catName} ${userTag}</div>
-          <div class="transaction-item__meta">${catName}${tx.note ? ' · ' + tx.note : ''}</div>
+          <div class="transaction-item__name">${productName} ${userTag}</div>
+          <div class="transaction-item__meta">${catName}${note ? ' · ' + note : ''}</div>
         </div>
         <div class="transaction-item__amount ${amountClass}">${sign}¥${Utils.formatMoney(tx.amount)}</div>
         <div class="action-menu">

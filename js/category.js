@@ -117,7 +117,7 @@ const Category = {
   /** 渲染分类选择下拉框（同步） */
   renderSelect(selectedId) {
     return this._cache.map(c =>
-      `<option value="${c.id}" ${c.id === selectedId ? 'selected' : ''}>${c.icon} ${c.name}</option>`
+      `<option value="${c.id}" ${c.id === selectedId ? 'selected' : ''}>${c.icon} ${Utils.escapeHtml(c.name)}</option>`
     ).join('');
   },
 
@@ -129,7 +129,7 @@ const Category = {
       <div class="stock-item" data-id="${c.id}">
         <div class="transaction-item__icon" style="background:${c.color}20;color:${c.color}">${c.icon}</div>
         <div class="stock-item__info">
-          <div class="stock-item__name">${c.name}</div>
+          <div class="stock-item__name">${Utils.escapeHtml(c.name)}</div>
         </div>
         <div class="stock-item__actions">
           <button class="btn btn--small btn--outline" onclick="Category.showEditModal('${c.id}')">编辑</button>

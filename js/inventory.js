@@ -46,7 +46,7 @@ const Inventory = {
             ${cat ? cat.icon : '📦'}
           </div>
           <div class="stock-item__info">
-            <div class="stock-item__name">${item.name}</div>
+            <div class="stock-item__name">${Utils.escapeHtml(item.name)}</div>
             <div class="stock-item__detail">
               进价 ¥${Utils.formatMoney(item.purchasePrice)} · 售价 ¥${Utils.formatMoney(item.sellingPrice)} · 库存 ${item.stock}
             </div>
