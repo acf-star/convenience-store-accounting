@@ -34,11 +34,11 @@ const Store = {
   },
 
   _catToDb(cat) {
-    return { id: cat.id, name: cat.name, icon: cat.icon, color: cat.color };
+    return { id: cat.id, name: cat.name, icon: cat.icon };
   },
 
   _catFromDb(row) {
-    return { id: row.id, name: row.name, icon: row.icon, color: row.color };
+    return { id: row.id, name: row.name, icon: row.icon };
   },
 
   _invToDb(item) {

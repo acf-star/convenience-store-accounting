@@ -17,9 +17,38 @@ const Category = {
     { id: 'cat_other', name: '其他', icon: '📦', color: '#607D8B' }
   ],
 
+  /** 预设颜色表 */
+  _defaultColors: {
+    cat_beverage: '#2196F3', cat_snack: '#FF9800', cat_daily: '#9C27B0',
+    cat_tobacco: '#795548', cat_fresh: '#4CAF50', cat_other: '#607D8B'
+  },
+
+  /** 获取颜色：预设 > 用户保存 > hash 生成 */
+  _getColor(id) {
+    if (this._defaultColors[id]) return this._defaultColors[id];
+    try {
+      const saved = JSON.parse(localStorage.getItem('csa_cat_colors') || '{}');
+      if (saved[id]) return saved[id];
+    } catch {}
+    const palette = ['#E91E63','#00BCD4','#FF5722','#3F51B5','#009688','#FFC107','#8BC34A','#673AB7'];
+    let hash = 0;
+    for (let i = 0; i < id.length; i++) hash = ((hash << 5) - hash + id.charCodeAt(i)) | 0;
+    return palette[Math.abs(hash) % palette.length];
+  },
+
+  /** 保存用户自选颜色 */
+  _saveColor(id, color) {
+    try {
+      const saved = JSON.parse(localStorage.getItem('csa_cat_colors') || '{}');
+      saved[id] = color;
+      localStorage.setItem('csa_cat_colors', JSON.stringify(saved));
+    } catch {}
+  },
+
   /** 从数据库加载到缓存 */
   async loadFromDB() {
     this._cache = await Store.getCategories();
+    this._cache.forEach(c => { c.color = this._getColor(c.id); });
   },
 
   /** 初始化（首次使用时写入预设分类） */
@@ -49,6 +78,7 @@ const Category = {
       icon: icon || '📦',
       color: color || '#607D8B'
     };
+    this._saveColor(cat.id, cat.color);
     await Store.saveCategories([...this._cache, cat]);
     await this.loadFromDB();
     return cat;
@@ -56,6 +86,7 @@ const Category = {
 
   /** 更新分类 */
   async update(id, updates) {
+    if (updates.color) this._saveColor(id, updates.color);
     const list = this._cache.map(c => c.id === id ? { ...c, ...updates } : c);
     await Store.saveCategories(list);
     await this.loadFromDB();
