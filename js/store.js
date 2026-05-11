@@ -57,11 +57,15 @@ const Store = {
   },
 
   _catToDb(cat) {
-    return { id: cat.id, name: cat.name, icon: cat.icon };
+    // id 由数据库自动生成（UUID），不传
+    // type 默认 'expense'，sort_order 默认 0
+    const row = { name: cat.name, icon: cat.icon, type: cat.type || 'expense' };
+    if (cat.sort_order !== undefined) row.sort_order = cat.sort_order;
+    return row;
   },
 
   _catFromDb(row) {
-    return { id: row.id, name: row.name, icon: row.icon };
+    return { id: row.id, name: row.name, icon: row.icon, type: row.type, sort_order: row.sort_order || 0 };
   },
 
   _invToDb(item) {
@@ -143,23 +147,26 @@ const Store = {
   async saveCategories(list) {
     const { data: existing, error: readErr } = await SupabaseConfig.client.from('categories').select('*');
     if (readErr) throw readErr;
-    const existingIds = new Set((existing || []).map(r => r.id));
-    const keepIds = new Set(list.map(c => c.id));
 
-    // 删除数据库中有但新列表中没有的
-    for (const id of existingIds) {
-      if (!keepIds.has(id)) {
+    const existingByName = new Map((existing || []).map(r => [r.name, r]));
+    const keepNames = new Set(list.map(c => c.name));
+
+    // 删除数据库中有但新列表中没有的（按 name 匹配）
+    for (const row of (existing || [])) {
+      if (!keepNames.has(row.name)) {
         await this._write(() =>
-          SupabaseConfig.client.from('categories').delete().eq('id', id)
+          SupabaseConfig.client.from('categories').delete().eq('id', row.id)
         );
       }
     }
 
-    // upsert 新列表
-    if (list.length > 0) {
-      await this._write(() =>
-        SupabaseConfig.client.from('categories').upsert(list.map(c => this._catToDb(c)))
-      );
+    // 插入新列表中不存在的
+    for (const cat of list) {
+      if (!existingByName.has(cat.name)) {
+        await this._write(() =>
+          SupabaseConfig.client.from('categories').insert(this._catToDb(cat))
+        );
+      }
     }
   },
 

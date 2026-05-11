@@ -7,35 +7,36 @@
 const Category = {
   _cache: [],
 
-  /** 预设分类 */
+  /** 预设分类（id 由数据库 UUID 自动生成，不硬编码） */
   defaults: [
-    { id: 'cat_beverage', name: '饮料', icon: '🥤', color: '#2196F3' },
-    { id: 'cat_snack', name: '零食', icon: '🍪', color: '#FF9800' },
-    { id: 'cat_daily', name: '日用品', icon: '🧴', color: '#9C27B0' },
-    { id: 'cat_tobacco', name: '烟酒', icon: '🍺', color: '#795548' },
-    { id: 'cat_fresh', name: '生鲜', icon: '🥬', color: '#4CAF50' },
-    { id: 'cat_personal', name: '个人护理', icon: '🧼', color: '#E91E63' },
-    { id: 'cat_stationery', name: '文具', icon: '✏️', color: '#3F51B5' },
-    { id: 'cat_other', name: '其他', icon: '📦', color: '#607D8B' }
+    { name: '饮料', icon: '🥤', color: '#2196F3' },
+    { name: '零食', icon: '🍪', color: '#FF9800' },
+    { name: '日用品', icon: '🧴', color: '#9C27B0' },
+    { name: '烟酒', icon: '🍺', color: '#795548' },
+    { name: '生鲜', icon: '🥬', color: '#4CAF50' },
+    { name: '个人护理', icon: '🧼', color: '#E91E63' },
+    { name: '文具', icon: '✏️', color: '#3F51B5' },
+    { name: '其他', icon: '📦', color: '#607D8B' }
   ],
 
-  /** 预设颜色表 */
+  /** 预设颜色表（按分类名） */
   _defaultColors: {
-    cat_beverage: '#2196F3', cat_snack: '#FF9800', cat_daily: '#9C27B0',
-    cat_tobacco: '#795548', cat_fresh: '#4CAF50', cat_personal: '#E91E63',
-    cat_stationery: '#3F51B5', cat_other: '#607D8B'
+    '饮料': '#2196F3', '零食': '#FF9800', '日用品': '#9C27B0',
+    '烟酒': '#795548', '生鲜': '#4CAF50', '个人护理': '#E91E63',
+    '文具': '#3F51B5', '其他': '#607D8B'
   },
 
   /** 获取颜色：预设 > 用户保存 > hash 生成 */
-  _getColor(id) {
-    if (this._defaultColors[id]) return this._defaultColors[id];
+  _getColor(id, name) {
+    if (name && this._defaultColors[name]) return this._defaultColors[name];
     try {
       const saved = JSON.parse(localStorage.getItem('csa_cat_colors') || '{}');
       if (saved[id]) return saved[id];
     } catch {}
     const palette = ['#E91E63','#00BCD4','#FF5722','#3F51B5','#009688','#FFC107','#8BC34A','#673AB7'];
     let hash = 0;
-    for (let i = 0; i < id.length; i++) hash = ((hash << 5) - hash + id.charCodeAt(i)) | 0;
+    const key = id || name || '';
+    for (let i = 0; i < key.length; i++) hash = ((hash << 5) - hash + key.charCodeAt(i)) | 0;
     return palette[Math.abs(hash) % palette.length];
   },
 
@@ -51,7 +52,7 @@ const Category = {
   /** 从数据库加载到缓存 */
   async loadFromDB() {
     this._cache = await Store.getCategories();
-    this._cache.forEach(c => { c.color = this._getColor(c.id); });
+    this._cache.forEach(c => { c.color = this._getColor(c.id, c.name); });
   },
 
   /** 初始化（首次使用时写入预设分类） */
@@ -73,18 +74,25 @@ const Category = {
     return this._cache.find(c => c.id === id);
   },
 
-  /** 添加分类 */
+  /** 添加分类（id 由数据库自动生成） */
   async add(name, icon, color) {
     const cat = {
-      id: 'cat_' + Utils.genId(),
       name,
       icon: icon || '📦',
       color: color || '#607D8B'
     };
-    this._saveColor(cat.id, cat.color);
-    await Store.saveCategories([...this._cache, cat]);
+    // 先插入数据库获取生成的 id
+    const { data, error } = await SupabaseConfig.client
+      .from('categories')
+      .insert(Store._catToDb(cat))
+      .select()
+      .single();
+    if (error) throw error;
+    const saved = Store._catFromDb(data);
+    saved.color = color || '#607D8B';
+    this._saveColor(saved.id, saved.color);
     await this.loadFromDB();
-    return cat;
+    return saved;
   },
 
   /** 更新分类 */
