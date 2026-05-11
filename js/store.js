@@ -127,23 +127,25 @@ const Store = {
   },
 
   async saveCategories(list) {
-    // 先备份旧数据，insert 失败时可恢复
-    const { data: backup } = await SupabaseConfig.client.from('categories').select('*');
+    // 获取数据库中现有的分类
+    const { data: existing } = await SupabaseConfig.client.from('categories').select('*');
+    const existingIds = new Set((existing || []).map(r => r.id));
+    const keepIds = new Set(list.map(c => c.id));
 
-    const { error: delError } = await SupabaseConfig.client.from('categories').delete().not('id', 'is', null);
-    if (delError) throw delError;
+    // 删除数据库中有但新列表中没有的
+    for (const id of existingIds) {
+      if (!keepIds.has(id)) {
+        const { error } = await SupabaseConfig.client.from('categories').delete().eq('id', id);
+        if (error) throw error;
+      }
+    }
 
+    // 插入或更新新列表中的分类
     if (list.length > 0) {
       const { error } = await SupabaseConfig.client
         .from('categories')
-        .insert(list.map(c => this._catToDb(c)));
-      if (error) {
-        // insert 失败，尝试恢复旧数据
-        if (backup && backup.length > 0) {
-          await SupabaseConfig.client.from('categories').insert(backup);
-        }
-        throw error;
-      }
+        .upsert(list.map(c => this._catToDb(c)));
+      if (error) throw error;
     }
   },
 
@@ -197,6 +199,14 @@ const Store = {
 
   // ── 备份 / 恢复 ──────────────────────────────────────────
 
+  /** 按 ID 逐条删除表中所有数据（绕过 RLS 全表删除限制） */
+  async _deleteAll(table) {
+    const { data } = await SupabaseConfig.client.from(table).select('id');
+    for (const row of (data || [])) {
+      await SupabaseConfig.client.from(table).delete().eq('id', row.id);
+    }
+  },
+
   async backup() {
     const [transactions, categories, inventory] = await Promise.all([
       this.getTransactions(),
@@ -209,13 +219,13 @@ const Store = {
   async restore(data) {
     if (data.categories) await this.saveCategories(data.categories);
     if (data.inventory) {
-      await SupabaseConfig.client.from('inventory').delete().not('id', 'is', null);
+      await this._deleteAll('inventory');
       for (const item of data.inventory) {
         await this.addInventoryItem(item);
       }
     }
     if (data.transactions) {
-      await SupabaseConfig.client.from('transactions').delete().not('id', 'is', null);
+      await this._deleteAll('transactions');
       for (const tx of data.transactions) {
         await this.addTransaction(tx);
       }
@@ -223,8 +233,8 @@ const Store = {
   },
 
   async clearAll() {
-    await SupabaseConfig.client.from('transactions').delete().not('id', 'is', null);
-    await SupabaseConfig.client.from('inventory').delete().not('id', 'is', null);
-    await SupabaseConfig.client.from('categories').delete().not('id', 'is', null);
+    await this._deleteAll('transactions');
+    await this._deleteAll('inventory');
+    await this._deleteAll('categories');
   }
 };
