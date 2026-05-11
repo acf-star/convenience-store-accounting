@@ -168,6 +168,11 @@ const Inventory = {
 
   /** 确认进货 */
   async confirmStockIn(id) {
+    const confirmBtn = document.querySelector('#invModal .btn--primary');
+    if (confirmBtn?.disabled) return;
+    if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = '处理中...'; }
+
+    try {
     const list = await Store.getInventory();
     const item = list.find(i => i.id === id);
     if (!item) return;
@@ -176,7 +181,7 @@ const Inventory = {
     const price = parseFloat(document.getElementById('stockInPrice').value) || 0;
     const date = document.getElementById('stockInDate').value || Utils.today();
 
-    if (qty <= 0) { Notify.toast('请输入有效数量', 'error'); return; }
+    if (qty <= 0) { Notify.toast('请输入有效数量', 'error'); if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = '确认进货'; } return; }
 
     await Store.updateInventoryItem(id, { stock: item.stock + qty, purchasePrice: price });
 
@@ -196,6 +201,10 @@ const Inventory = {
     Notify.toast(`已进货 ${item.name} x${qty}`);
     await App.renderCurrentPage();
     await App.updateHeaderSummary();
+    } catch (e) {
+      Notify.toast('进货失败: ' + e.message, 'error');
+      if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = '确认进货'; }
+    }
   },
 
   /** 销售 */
@@ -234,6 +243,11 @@ const Inventory = {
 
   /** 确认销售 */
   async confirmSell(id) {
+    const confirmBtn = document.querySelector('#invModal .btn--primary');
+    if (confirmBtn?.disabled) return;
+    if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = '处理中...'; }
+
+    try {
     const list = await Store.getInventory();
     const item = list.find(i => i.id === id);
     if (!item) return;
@@ -242,7 +256,7 @@ const Inventory = {
     const price = parseFloat(document.getElementById('sellPrice').value) || 0;
     const date = document.getElementById('sellDate').value || Utils.today();
 
-    if (qty <= 0 || qty > item.stock) { Notify.toast('请输入有效数量', 'error'); return; }
+    if (qty <= 0 || qty > item.stock) { Notify.toast('请输入有效数量', 'error'); if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = '确认销售'; } return; }
 
     await Store.updateInventoryItem(id, { stock: item.stock - qty, sellingPrice: price });
 
@@ -262,6 +276,10 @@ const Inventory = {
     Notify.toast(`已销售 ${item.name} x${qty}`);
     await App.renderCurrentPage();
     await App.updateHeaderSummary();
+    } catch (e) {
+      Notify.toast('销售失败: ' + e.message, 'error');
+      if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = '确认销售'; }
+    }
   },
 
   /** 显示编辑弹窗 */

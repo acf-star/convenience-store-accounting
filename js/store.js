@@ -130,10 +130,13 @@ const Store = {
   },
 
   async saveCategories(list) {
-    const { error } = await SupabaseConfig.client
-      .from('categories')
-      .upsert(list.map(c => this._catToDb(c)));
-    if (error) throw error;
+    await SupabaseConfig.client.from('categories').delete().neq('id', '');
+    if (list.length > 0) {
+      const { error } = await SupabaseConfig.client
+        .from('categories')
+        .insert(list.map(c => this._catToDb(c)));
+      if (error) throw error;
+    }
   },
 
   // ── 库存 ──────────────────────────────────────────────────

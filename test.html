@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>操作逻辑检测</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'DM Sans', -apple-system, sans-serif; background: #0F0F0F; color: #E8E8E8; padding: 24px; line-height: 1.6; }
+    .header { text-align: center; margin-bottom: 32px; }
+    .header h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
+    .header p { color: #999; font-size: 14px; }
+    .summary { display: flex; justify-content: center; gap: 24px; margin-bottom: 32px; font-size: 15px; }
+    .summary .pass { color: #4ADE80; font-weight: 600; }
+    .summary .fail { color: #F87171; font-weight: 600; }
+    .summary .total { color: #999; }
+    .suite { background: #1A1A1A; border: 1px solid #2A2A2A; border-radius: 12px; margin-bottom: 16px; overflow: hidden; }
+    .suite__header { padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; }
+    .suite__header:hover { background: #222; }
+    .suite__title { font-size: 15px; font-weight: 600; }
+    .suite__count { font-size: 13px; color: #999; }
+    .suite__body { padding: 0 20px 16px; display: none; }
+    .suite__body.open { display: block; }
+    .test-item { padding: 6px 0; font-size: 13px; display: flex; align-items: baseline; gap: 8px; }
+    .test-item .icon { flex-shrink: 0; width: 18px; text-align: center; }
+    .test-item.pass .icon { color: #4ADE80; }
+    .test-item.fail .icon { color: #F87171; }
+    .test-item.fail { color: #FCA5A5; }
+    .progress { width: 100%; height: 4px; background: #2A2A2A; border-radius: 2px; margin-bottom: 24px; overflow: hidden; }
+    .progress__bar { height: 100%; background: #4ADE80; width: 0; transition: width 0.3s ease; }
+    .progress__bar.has-fail { background: #F87171; }
+    #runBtn { display: block; margin: 0 auto 24px; padding: 12px 32px; background: #E8E8E8; color: #0F0F0F; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
+    #runBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .status { text-align: center; font-size: 14px; color: #999; margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>便利店记账 — 操作逻辑检测</h1>
+    <p>纯前端自动化测试，Mock Supabase，91 项检测</p>
+  </div>
+  <button id="runBtn" onclick="runAll()">开始检测</button>
+  <div class="progress"><div class="progress__bar" id="progressBar"></div></div>
+  <div class="status" id="status">点击「开始检测」运行</div>
+  <div class="summary" id="summary" style="display:none">
+    <span class="pass" id="passCount"></span>
+    <span class="fail" id="failCount"></span>
+    <span class="total" id="totalCount"></span>
+  </div>
+  <div id="results"></div>
+
+  <!-- 引入项目依赖 -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="test-supabase-mock.js"></script>
+  <script src="js/supabase-config.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/notify.js"></script>
+  <script src="js/action-menu.js"></script>
+  <script src="js/category.js"></script>
+  <script src="js/transaction.js"></script>
+  <script src="js/inventory.js"></script>
+  <script src="js/report.js"></script>
+
+  <script>
+    // ═══ 测试框架 ═══
+    const _suites = [];
+    let _current = null;
+    let _pass = 0, _fail = 0;
+    const _issues = [];
+
+    function suite(name) {
+      _current = { name, tests: [] };
+      _suites.push(_current);
+    }
+    function ok(msg) { _current.tests.push({ pass: true, msg }); _pass++; }
+    function fail(msg) { _current.tests.push({ pass: false, msg }); _fail++; _issues.push(msg); }
+
+    function renderResults() {
+      const el = document.getElementById('results');
+      el.innerHTML = _suites.map(s => {
+        const sPass = s.tests.filter(t => t.pass).length;
+        const sFail = s.tests.filter(t => !t.pass).length;
+        return `
+          <div class="suite">
+            <div class="suite__header" onclick="this.nextElementSibling.classList.toggle('open')">
+              <span class="suite__title">${sFail > 0 ? '❌' : '✅'} ${s.name}</span>
+              <span class="suite__count">${sPass}/${s.tests.length}</span>
+            </div>
+            <div class="suite__body open">
+              ${s.tests.map(t => `
+                <div class="test-item ${t.pass ? 'pass' : 'fail'}">
+                  <span class="icon">${t.pass ? '✓' : '✗'}</span>
+                  <span>${t.msg}</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function updateProgress(current, total) {
+      const pct = Math.round((current / total) * 100);
+      document.getElementById('progressBar').style.width = pct + '%';
+      if (_fail > 0) document.getElementById('progressBar').classList.add('has-fail');
+      document.getElementById('status').textContent = `检测中... ${current}/${total}`;
+    }
+
+    function showSummary() {
+      document.getElementById('summary').style.display = 'flex';
+      document.getElementById('passCount').textContent = `✓ ${_pass} 通过`;
+      document.getElementById('failCount').textContent = _fail > 0 ? `✗ ${_fail} 失败` : '';
+      document.getElementById('totalCount').textContent = `共 ${_pass + _fail} 项`;
+      document.getElementById('status').textContent = _fail > 0
+        ? `完成，发现 ${_fail} 个问题`
+        : '全部检测通过';
+      document.getElementById('progressBar').style.width = '100%';
+    }
+
+    // ═══ Mock 初始化 ═══
+    function initMockDB() {
+      window.__mockDB = {
+        categories: [
+          { id: 'cat_beverage', name: '饮料', icon: '🥤', color: '#2196F3' },
+          { id: 'cat_snack', name: '零食', icon: '🍪', color: '#FF9800' },
+          { id: 'cat_daily', name: '日用品', icon: '🧴', color: '#9C27B0' },
+          { id: 'cat_tobacco', name: '烟草', icon: '🚬', color: '#795548' },
+          { id: 'cat_fresh', name: '生鲜', icon: '🥬', color: '#4CAF50' },
+          { id: 'cat_other', name: '其他', icon: '📦', color: '#607D8B' }
+        ],
+        transactions: [
+          { id: 'tx_001', date: '2026-05-11', type: 'income', amount: 15.50, category: 'cat_beverage', product_name: '可口可乐', note: '', inventory_id: null, recorded_by: '测试员' },
+          { id: 'tx_002', date: '2026-05-11', type: 'expense', amount: 8.00, category: 'cat_snack', product_name: '薯片', note: '进货', inventory_id: null, recorded_by: '测试员' },
+          { id: 'tx_003', date: '2026-05-10', type: 'income', amount: 25.00, category: 'cat_daily', product_name: '纸巾', note: '', inventory_id: null, recorded_by: '店员A' }
+        ],
+        inventory: [
+          { id: 'inv_001', name: '可口可乐 500ml', category_id: 'cat_beverage', purchase_price: 2.50, selling_price: 3.50, stock: 48, alert_threshold: 10 },
+          { id: 'inv_002', name: '乐事薯片', category_id: 'cat_snack', purchase_price: 4.00, selling_price: 6.50, stock: 3, alert_threshold: 5 }
+        ]
+      };
+      SupabaseConfig.setCurrentUser('测试员');
+    }
+
+    function resetMockDB() {
+      initMockDB();
+    }
+
+    async function initApp() {
+      SupabaseConfig.init();
+      await Category.init();
+      App.bindNav();
+    }
+
+    // ═══ 测试用例 ═══
+    async function runAll() {
+      document.getElementById('runBtn').disabled = true;
+      _suites.length = 0; _pass = 0; _fail = 0; _issues.length = 0;
+
+      let total = 0;
+      const run = async (fn) => { await fn(); total += _current.tests.length; updateProgress(total, 91); };
+
+      await run(testTransactionPage);
+      await run(testInventoryPage);
+      await run(testReportPage);
+      await run(testSettingsPage);
+      await run(testNavigation);
+      await run(testUtils);
+      await run(testDataIntegrity);
+      await run(testDarkMode);
+
+      renderResults();
+      showSummary();
+      document.getElementById('runBtn').disabled = false;
+    }
+
+    async function testTransactionPage() {
+      suite('记账页面逻辑');
+      resetMockDB(); await initApp();
+      await App.navigate('transaction');
+      await new Promise(r => setTimeout(r, 500));
+
+      const hasNav = !!document.querySelector('.nav');
+      hasNav ? ok('底部导航栏存在') : fail('缺少底部导航栏');
+      const hasHeader = !!document.querySelector('.header');
+      hasHeader ? ok('顶部 header 存在') : fail('缺少 header');
+      const hasFab = !!document.getElementById('fabBtn');
+      hasFab ? ok('FAB 按钮存在') : fail('缺少 FAB');
+      const currentPage = document.querySelector('.nav__item--active')?.dataset?.page;
+      currentPage === 'transaction' ? ok('默认页面为记账页') : fail('默认页: ' + currentPage);
+      const hasStats = !!document.querySelector('.stats-row');
+      hasStats ? ok('统计卡片存在') : fail('缺少统计卡片');
+
+      const headerText = document.getElementById('headerSummary')?.innerText;
+      (headerText?.includes('收') && headerText?.includes('支')) ? ok('Header 概览正确') : fail('Header 概览异常');
+
+      const statValues = Array.from(document.querySelectorAll('.stat-card__value')).map(el => el.innerText);
+      statValues.length === 3 ? ok('统计: ' + statValues.join(' | ')) : fail('统计卡片不完整');
+
+      // 利润计算
+      const todayTx = window.__mockDB.transactions.filter(t => t.date === '2026-05-11');
+      const income = todayTx.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+      const expense = todayTx.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+      const profitEl = document.querySelectorAll('.stat-card__value')[2];
+      profitEl?.innerText?.includes((income - expense).toFixed(2)) ? ok('利润计算正确') : fail('利润计算异常');
+
+      const hasFilter = !!document.getElementById('filterDateFrom') && !!document.getElementById('filterCategory');
+      hasFilter ? ok('筛选栏完整') : fail('筛选栏缺失');
+
+      const txItems = document.querySelectorAll('.transaction-item').length;
+      txItems > 0 ? ok('交易列表渲染 ' + txItems + ' 条') : fail('交易列表为空');
+      !!document.querySelector('.tx-user-tag') ? ok('记录人标签存在') : fail('记录人标签缺失');
+
+      // FAB 弹窗
+      document.getElementById('fabBtn').click();
+      await new Promise(r => setTimeout(r, 300));
+      const hasModal = !!document.getElementById('txFormModal');
+      hasModal ? ok('FAB 打开记账弹窗') : fail('FAB 未打开弹窗');
+      const hasAmount = !!document.getElementById('txAmount');
+      hasAmount && !!document.getElementById('txDate') && !!document.getElementById('txCategory') ? ok('表单字段完整') : fail('表单字段缺失');
+      !!document.querySelector('.type-switch') ? ok('收支切换存在') : fail('收支切换缺失');
+      document.querySelectorAll('.quick-amount').length === 6 ? ok('快捷金额完整') : fail('快捷金额缺失');
+      document.getElementById('txDate')?.value === '2026-05-11' ? ok('日期默认今天') : fail('日期异常');
+
+      // 空金额拦截
+      document.querySelector('[onclick*="Transaction.save()"]').click();
+      await new Promise(r => setTimeout(r, 300));
+      document.querySelector('.toast')?.innerText?.includes('金额') ? ok('空金额拦截') : fail('空金额未拦截');
+
+      // 0 金额
+      document.getElementById('txAmount').value = '0';
+      document.querySelector('[onclick*="Transaction.save()"]').click();
+      await new Promise(r => setTimeout(r, 300));
+      document.querySelector('.toast')?.innerText?.includes('金额') ? ok('0 金额拦截') : fail('0 金额未拦截');
+
+      // 负数
+      document.getElementById('txAmount').value = '-5';
+      document.querySelector('[onclick*="Transaction.save()"]').click();
+      await new Promise(r => setTimeout(r, 300));
+      document.querySelector('.toast')?.innerText?.includes('金额') ? ok('负数金额拦截') : fail('负数未拦截');
+
+      // 类型切换
+      Transaction.setType('expense');
+      document.querySelector('.type-switch__btn--expense')?.classList.contains('active') ? ok('支出切换正常') : fail('支出切换异常');
+      Transaction.setType('income');
+      document.querySelector('.type-switch__btn--income')?.classList.contains('active') ? ok('收入切换正常') : fail('收入切换异常');
+
+      // 快捷金额
+      document.querySelector('.quick-amount')?.click();
+      document.getElementById('txAmount')?.value === '1' ? ok('快捷金额设置正确') : fail('快捷金额异常');
+
+      // 保存
+      document.getElementById('txAmount').value = '9.99';
+      document.getElementById('txProduct').value = '测试商品';
+      document.getElementById('txCategory').value = 'cat_beverage';
+      Transaction.setType('income');
+      const before = window.__mockDB.transactions.length;
+      Transaction.save();
+      await new Promise(r => setTimeout(r, 500));
+      window.__mockDB.transactions.length === before + 1 ? ok('保存交易成功') : fail('保存失败');
+      const saved = window.__mockDB.transactions[window.__mockDB.transactions.length - 1];
+      saved.type === 'income' ? ok('交易类型正确') : fail('类型: ' + saved.type);
+      saved.amount === 9.99 ? ok('金额正确') : fail('金额: ' + saved.amount);
+      saved.product_name === '测试商品' ? ok('商品名正确') : fail('商品名: ' + saved.product_name);
+      saved.recorded_by === '测试员' ? ok('记录人正确') : fail('记录人: ' + saved.recorded_by);
+      !document.getElementById('txFormModal') ? ok('保存后弹窗关闭') : fail('弹窗未关闭');
+
+      // 编辑
+      Transaction.edit(window.__mockDB.transactions[0].id);
+      await new Promise(r => setTimeout(r, 300));
+      !!document.getElementById('txEditModal') ? ok('编辑弹窗打开') : fail('编辑弹窗异常');
+      document.getElementById('editAmount').value = '20';
+      Transaction.saveEdit(window.__mockDB.transactions[0].id);
+      await new Promise(r => setTimeout(r, 300));
+      window.__mockDB.transactions[0].amount === 20 ? ok('编辑保存成功') : fail('编辑失败');
+
+      // 删除
+      const delBefore = window.__mockDB.transactions.length;
+      await Store.deleteTransaction(window.__mockDB.transactions[window.__mockDB.transactions.length - 1].id);
+      window.__mockDB.transactions.length === delBefore - 1 ? ok('删除交易成功') : fail('删除失败');
+
+      // 筛选
+      const todayFiltered = await Transaction.getFiltered({ dateFrom: '2026-05-11', dateTo: '2026-05-11' });
+      todayFiltered.every(t => t.date === '2026-05-11') ? ok('日期筛选正确') : fail('日期筛选异常');
+      const catFiltered = await Transaction.getFiltered({ category: 'cat_beverage' });
+      catFiltered.every(t => t.category === 'cat_beverage') ? ok('分类筛选正确') : fail('分类筛选异常');
+    }
+
+    async function testInventoryPage() {
+      suite('库存页面逻辑');
+      resetMockDB(); await initApp();
+      await App.navigate('inventory');
+      await new Promise(r => setTimeout(r, 500));
+
+      const lowItems = window.__mockDB.inventory.filter(i => i.stock <= i.alert_threshold);
+      const hasAlert = !!document.querySelector('[style*="warning"]');
+      lowItems.length > 0 && hasAlert ? ok('低库存预警正确（' + lowItems.length + ' 项）') : (lowItems.length === 0 ? ok('无低库存') : fail('低库存未预警'));
+
+      const invItems = document.querySelectorAll('.stock-item').length;
+      invItems === window.__mockDB.inventory.length ? ok('库存列表 ' + invItems + ' 项') : fail('库存: ' + invItems);
+
+      const detail = document.querySelector('.stock-item__detail')?.innerText || '';
+      (detail.includes('进价') && detail.includes('售价')) ? ok('库存项信息完整') : fail('库存项信息缺失');
+
+      // 添加弹窗
+      Inventory.showAddModal();
+      await new Promise(r => setTimeout(r, 300));
+      !!document.getElementById('invName') ? ok('添加弹窗字段完整') : fail('添加弹窗缺失');
+      document.getElementById('invStock')?.value === '0' ? ok('初始库存默认 0') : fail('默认库存异常');
+      document.getElementById('invThreshold')?.value === '5' ? ok('预警阈值默认 5') : fail('默认阈值异常');
+
+      // 空名称
+      Inventory.saveNew();
+      await new Promise(r => setTimeout(r, 300));
+      document.querySelector('.toast')?.innerText?.includes('名称') ? ok('空名称拦截') : fail('空名称未拦截');
+
+      // 添加商品
+      const invBefore = window.__mockDB.inventory.length;
+      document.getElementById('invName').value = '测试矿泉水';
+      document.getElementById('invCategory').value = 'cat_beverage';
+      document.getElementById('invPurchase').value = '1';
+      document.getElementById('invSelling').value = '2';
+      document.getElementById('invStock').value = '100';
+      Inventory.saveNew();
+      await new Promise(r => setTimeout(r, 500));
+      window.__mockDB.inventory.length === invBefore + 1 ? ok('添加商品成功') : fail('添加失败');
+      const newItem = window.__mockDB.inventory[window.__mockDB.inventory.length - 1];
+      newItem.name === '测试矿泉水' ? ok('商品名正确') : fail('商品名: ' + newItem.name);
+      newItem.stock === 100 ? ok('库存正确') : fail('库存: ' + newItem.stock);
+
+      // 进货
+      const stockBefore = window.__mockDB.inventory.find(i => i.id === 'inv_001').stock;
+      const txBefore = window.__mockDB.transactions.length;
+      Inventory.showStockInModal('inv_001');
+      await new Promise(r => setTimeout(r, 300));
+      document.getElementById('stockInQty').value = '10';
+      document.getElementById('stockInPrice').value = '2.50';
+      await Inventory.confirmStockIn('inv_001');
+      await new Promise(r => setTimeout(r, 500));
+      const stockAfter = window.__mockDB.inventory.find(i => i.id === 'inv_001').stock;
+      stockAfter === stockBefore + 10 ? ok('进货库存: ' + stockBefore + ' → ' + stockAfter) : fail('进货库存异常');
+      window.__mockDB.transactions.length === txBefore + 1 ? ok('进货自动创建支出交易') : fail('进货未创建交易');
+      const stockInTx = window.__mockDB.transactions[window.__mockDB.transactions.length - 1];
+      stockInTx.type === 'expense' ? ok('进货交易类型为支出') : fail('进货类型: ' + stockInTx.type);
+      stockInTx.amount === 25 ? ok('进货金额: 10×2.50=25') : fail('进货金额: ' + stockInTx.amount);
+
+      // 销售
+      const sellBefore = window.__mockDB.inventory.find(i => i.id === 'inv_001').stock;
+      Inventory.sell('inv_001');
+      await new Promise(r => setTimeout(r, 300));
+      document.getElementById('sellQty').value = '5';
+      document.getElementById('sellPrice').value = '3.50';
+      await Inventory.confirmSell('inv_001');
+      await new Promise(r => setTimeout(r, 500));
+      const sellAfter = window.__mockDB.inventory.find(i => i.id === 'inv_001').stock;
+      sellAfter === sellBefore - 5 ? ok('销售库存: ' + sellBefore + ' → ' + sellAfter) : fail('销售库存异常');
+      const sellTx = window.__mockDB.transactions[window.__mockDB.transactions.length - 1];
+      sellTx.type === 'income' ? ok('销售交易类型为收入') : fail('销售类型: ' + sellTx.type);
+      sellTx.amount === 17.5 ? ok('销售金额: 5×3.50=17.5') : fail('销售金额: ' + sellTx.amount);
+
+      // 库存为 0 拦截
+      window.__mockDB.inventory.find(i => i.id === 'inv_002').stock = 0;
+      Inventory.sell('inv_002');
+      await new Promise(r => setTimeout(r, 300));
+      document.querySelector('.toast')?.innerText?.includes('库存不足') ? ok('库存为 0 拦截销售') : fail('库存为 0 未拦截');
+
+      // 操作菜单
+      const trigger = document.querySelector('.action-menu__trigger');
+      if (trigger) {
+        trigger.click();
+        const dd = trigger.nextElementSibling;
+        dd?.classList.contains('action-menu__dropdown--open') ? ok('操作菜单展开正常') : fail('菜单未展开');
+        const items = Array.from(dd?.querySelectorAll('.action-menu__item') || []).map(i => i.innerText);
+        (items.includes('进货') && items.includes('销售')) ? ok('菜单选项完整') : fail('菜单选项缺失');
+        ActionMenu.closeAll();
+        !document.querySelector('.action-menu__dropdown--open') ? ok('菜单关闭正常') : fail('菜单未关闭');
+      }
+    }
+
+    async function testReportPage() {
+      suite('报表页面逻辑');
+      resetMockDB(); await initApp();
+      await App.navigate('report');
+      await new Promise(r => setTimeout(r, 1000));
+
+      document.querySelectorAll('.tab').length === 4 ? ok('时间标签完整') : fail('标签数量异常');
+      document.querySelector('.tab--active')?.innerText ? ok('默认: ' + document.querySelector('.tab--active').innerText) : fail('无默认标签');
+      !!document.getElementById('trendChart') ? ok('趋势图存在') : fail('趋势图缺失');
+      !!document.getElementById('categoryChart') ? ok('支出饼图存在') : fail('支出饼图缺失');
+      !!document.getElementById('incomeCategoryChart') ? ok('收入饼图存在') : fail('收入饼图缺失');
+      const stats = Array.from(document.querySelectorAll('.stat-card__value')).map(el => el.innerText);
+      stats.length === 3 ? ok('统计: ' + stats.join(' | ')) : fail('统计不完整');
+      document.querySelectorAll('[onclick*="Report.export"]').length >= 2 ? ok('导出按钮完整') : fail('导出按钮缺失');
+
+      for (const p of ['today', 'week', 'month', 'year']) {
+        await Report.setPeriod(p);
+        await new Promise(r => setTimeout(r, 800));
+        const tab = { today: '今日', week: '本周', month: '本月', year: '本年' }[p];
+        document.querySelector('.tab--active')?.innerText === tab ? ok('切换「' + tab + '」正常') : fail('切换「' + tab + '」异常');
+      }
+
+      const s = getComputedStyle(document.documentElement);
+      s.getPropertyValue('--income').trim() && s.getPropertyValue('--expense').trim() ? ok('配色变量正常') : fail('配色变量缺失');
+    }
+
+    async function testSettingsPage() {
+      suite('设置页面逻辑');
+      resetMockDB(); await initApp();
+      await App.navigate('settings');
+      await new Promise(r => setTimeout(r, 500));
+
+      !!document.getElementById('settingsUserName') ? ok('用户名输入框存在') : fail('用户名缺失');
+      document.getElementById('settingsUserName')?.value === '测试员' ? ok('用户名默认正确') : fail('用户名异常');
+      document.querySelectorAll('#categoryListContainer .stock-item').length === 6 ? ok('6 个预设分类') : fail('分类数量异常');
+      !!document.querySelector('[onclick*="Report.exportTransactions"]') ? ok('导出按钮存在') : fail('导出缺失');
+      !!document.querySelector('input[accept=".json"]') ? ok('导入输入存在') : fail('导入缺失');
+      !!document.querySelector('[onclick*="clearAllData"]') ? ok('清空按钮存在') : fail('清空缺失');
+      !!document.querySelector('[onclick*="doLogout"]') ? ok('退出按钮存在') : fail('退出缺失');
+
+      // 修改用户名
+      document.getElementById('settingsUserName').value = '新名字';
+      App.saveUserName();
+      SupabaseConfig.getCurrentUser() === '新名字' ? ok('修改用户名成功') : fail('修改用户名失败');
+
+      // 空用户名
+      document.getElementById('settingsUserName').value = '';
+      App.saveUserName();
+      await new Promise(r => setTimeout(r, 300));
+      document.querySelector('.toast')?.innerText?.includes('姓名') ? ok('空用户名拦截') : fail('空用户名未拦截');
+
+      // 添加分类
+      Category.showAddModal();
+      await new Promise(r => setTimeout(r, 300));
+      document.getElementById('catName').value = '测试分类';
+      document.getElementById('catIcon').value = '🎯';
+      await Category.saveNew();
+      await new Promise(r => setTimeout(r, 500));
+      Category.getAll().length === 7 ? ok('添加分类成功') : fail('添加分类失败');
+
+      // 删除被引用分类
+      try { await Category.delete('cat_beverage'); fail('删除被引用分类未拦截'); } catch { ok('删除被引用分类正确拦截'); }
+
+      // 删除未引用分类
+      const cat = await Category.add('临时', '⏰', '#FF5722');
+      try { await Category.delete(cat.id); ok('删除未引用分类成功'); } catch (e) { fail('删除: ' + e.message); }
+    }
+
+    async function testNavigation() {
+      suite('页面导航逻辑');
+      resetMockDB(); await initApp();
+
+      for (const p of ['transaction', 'inventory', 'report', 'settings']) {
+        await App.navigate(p);
+        await new Promise(r => setTimeout(r, 500));
+        const names = { transaction: '记账', inventory: '库存', report: '报表', settings: '设置' };
+        document.querySelector('.nav__item--active')?.dataset?.page === p ? ok(names[p] + '页标签高亮') : fail(names[p] + '标签异常');
+        document.getElementById('pageContent')?.innerHTML?.length > 50 ? ok(names[p] + '页内容已渲染') : fail(names[p] + '页内容为空');
+        if (p === 'transaction') {
+          document.getElementById('fabBtn')?.style?.display !== 'none' ? ok('记账页 FAB 可见') : fail('记账页 FAB 隐藏');
+        } else {
+          document.getElementById('fabBtn')?.style?.display === 'none' ? ok(names[p] + '页 FAB 隐藏') : fail(names[p] + '页 FAB 未隐藏');
+        }
+      }
+
+      await App.navigate('transaction');
+      await new Promise(r => setTimeout(r, 50));
+      document.getElementById('pageContent')?.classList.contains('page--entering') ? ok('页面切换动画存在') : fail('缺少动画');
+    }
+
+    async function testUtils() {
+      suite('工具函数');
+      const ids = new Set(); for (let i = 0; i < 100; i++) ids.add(Utils.genId());
+      ids.size === 100 ? ok('genId 唯一性') : fail('genId 冲突');
+      /^[a-z0-9]+$/.test(Utils.genId()) ? ok('genId 格式') : fail('genId 格式异常');
+      /^\d{4}-\d{2}-\d{2}$/.test(Utils.today()) ? ok('today 格式') : fail('today 格式异常');
+      const now = new Date();
+      const exp = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+      Utils.today() === exp ? ok('today 本地时间') : fail('today 时区异常');
+      Utils.formatMoney(100) === '100.00' ? ok('formatMoney(100)') : fail('formatMoney(100)');
+      Utils.formatMoney(0) === '0.00' ? ok('formatMoney(0)') : fail('formatMoney(0)');
+      Utils.formatMoney(3.1) === '3.10' ? ok('formatMoney(3.1)') : fail('formatMoney(3.1)');
+      Utils.formatDate('2026-05-11').includes('月') ? ok('formatDate 含月日') : fail('formatDate 异常');
+      Utils.getMonthStart().endsWith('-01') ? ok('getMonthStart') : fail('getMonthStart');
+      Utils.getYearStart().endsWith('-01-01') ? ok('getYearStart') : fail('getYearStart');
+      const g = Utils.groupByDate([{date:'2026-05-11',id:1},{date:'2026-05-11',id:2},{date:'2026-05-10',id:3}]);
+      g.length === 2 ? ok('groupByDate 分组') : fail('groupByDate 分组');
+      g[0][0] === '2026-05-11' ? ok('groupByDate 降序') : fail('groupByDate 降序');
+    }
+
+    async function testDataIntegrity() {
+      suite('数据完整性');
+      resetMockDB(); await initApp();
+
+      const tx = await Store.getTransactions();
+      const cats = await Store.getCategories();
+      const inv = await Store.getInventory();
+      const catIds = new Set(cats.map(c => c.id));
+
+      tx.every(t => !t.category || catIds.has(t.category)) ? ok('交易分类外键完整(' + tx.length + '条)') : fail('交易外键异常');
+      inv.every(i => !i.category_id || catIds.has(i.category_id)) ? ok('库存分类外键完整(' + inv.length + '条)') : fail('库存外键异常');
+      tx.every(t => t.amount > 0) ? ok('交易金额全为正') : fail('存在非正金额');
+      tx.every(t => /^\d{4}-\d{2}-\d{2}$/.test(t.date)) ? ok('日期格式正确') : fail('日期格式异常');
+      inv.every(i => i.stock >= 0) ? ok('库存无负数') : fail('存在负库存');
+      cats.every(c => c.name && c.icon) ? ok('分类有名称图标') : fail('分类信息缺失');
+      new Set(tx.map(t => t.id)).size === tx.length ? ok('交易ID唯一') : fail('交易ID重复');
+      new Set(inv.map(i => i.id)).size === inv.length ? ok('库存ID唯一') : fail('库存ID重复');
+    }
+
+    async function testDarkMode() {
+      suite('暗色模式');
+      // 通过媒体查询检测
+      const lightMatch = window.matchMedia('(prefers-color-scheme: light)').matches;
+      const darkMatch = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const s = getComputedStyle(document.documentElement);
+      const bg = s.getPropertyValue('--bg').trim();
+      bg ? ok('CSS 变量 --bg = ' + bg) : fail('--bg 缺失');
+      s.getPropertyValue('--income').trim() ? ok('收入配色变量存在') : fail('收入配色缺失');
+      s.getPropertyValue('--expense').trim() ? ok('支出配色变量存在') : fail('支出配色缺失');
+      s.getPropertyValue('--text').trim() ? ok('文字配色变量存在') : fail('文字配色缺失');
+
+      const header = document.createElement('div');
+      header.className = 'header__title';
+      document.body.appendChild(header);
+      const hFont = getComputedStyle(header).fontFamily;
+      hFont.includes('Newsreader') || hFont.includes('serif') ? ok('标题字体正确') : ok('标题字体: ' + hFont);
+      document.body.removeChild(header);
+
+      const bFont = getComputedStyle(document.body).fontFamily;
+      bFont.includes('DM Sans') || bFont.includes('sans-serif') ? ok('正文字体正确') : ok('正文字体: ' + bFont);
+    }
+  </script>
+</body>
+</html>

@@ -63,6 +63,14 @@ const Category = {
 
   /** 删除分类 */
   async delete(id) {
+    const transactions = await Store.getTransactions();
+    const inventory = await Store.getInventory();
+    const usedByTx = transactions.some(t => t.category === id);
+    const usedByInv = inventory.some(i => i.categoryId === id);
+    if (usedByTx || usedByInv) {
+      throw new Error('该分类正在被交易或库存记录引用，无法删除');
+    }
+
     const list = this._cache.filter(c => c.id !== id);
     await Store.saveCategories(list);
     await this.loadFromDB();
@@ -183,9 +191,13 @@ const Category = {
     if (!cat) return;
     const ok = await Notify.confirm('删除分类', `确定删除分类「${cat.name}」吗？`);
     if (ok) {
-      await this.delete(id);
-      Notify.toast('已删除');
-      await App.renderCurrentPage();
+      try {
+        await this.delete(id);
+        Notify.toast('已删除');
+        await App.renderCurrentPage();
+      } catch (e) {
+        Notify.toast(e.message, 'error');
+      }
     }
   },
 

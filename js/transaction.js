@@ -233,13 +233,14 @@ const Transaction = {
     const tx = list.find(t => t.id === id);
     if (!tx) return;
 
+    this._editType = tx.type;
     const html = `
       <div class="modal-overlay" id="txEditModal">
         <div class="modal">
           <div class="modal__title">编辑交易</div>
           <div class="type-switch">
-            <button class="type-switch__btn type-switch__btn--income ${tx.type === 'income' ? 'active' : ''}" onclick="Transaction.editType='income';this.parentElement.querySelectorAll('.type-switch__btn').forEach(b=>b.classList.remove('active'));this.classList.add('active')">收入</button>
-            <button class="type-switch__btn type-switch__btn--expense ${tx.type === 'expense' ? 'active' : ''}" onclick="Transaction.editType='expense';this.parentElement.querySelectorAll('.type-switch__btn').forEach(b=>b.classList.remove('active'));this.classList.add('active')">支出</button>
+            <button class="type-switch__btn type-switch__btn--income ${tx.type === 'income' ? 'active' : ''}" onclick="Transaction._editType='income';this.parentElement.querySelectorAll('.type-switch__btn').forEach(b=>b.classList.remove('active'));this.classList.add('active')">收入</button>
+            <button class="type-switch__btn type-switch__btn--expense ${tx.type === 'expense' ? 'active' : ''}" onclick="Transaction._editType='expense';this.parentElement.querySelectorAll('.type-switch__btn').forEach(b=>b.classList.remove('active'));this.classList.add('active')">支出</button>
           </div>
           <div class="form-row">
             <div class="form-group">
@@ -270,11 +271,8 @@ const Transaction = {
         </div>
       </div>
     `;
-    this.editType = tx.type;
     document.body.insertAdjacentHTML('beforeend', html);
   },
-
-  editType: 'income',
 
   /** 保存编辑 */
   async saveEdit(id) {
@@ -283,7 +281,7 @@ const Transaction = {
 
     await Store.updateTransaction(id, {
       date: document.getElementById('editDate').value,
-      type: this.editType,
+      type: this._editType,
       amount,
       category: document.getElementById('editCategory').value,
       productName: document.getElementById('editProduct').value.trim(),

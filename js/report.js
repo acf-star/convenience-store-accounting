@@ -7,6 +7,7 @@ const Report = {
   /** 渲染报表页面 */
   async render() {
     const stats = await this.getStats(this.currentPeriod);
+    this._lastStats = stats;
 
     return `
       <div class="tabs">
@@ -92,7 +93,8 @@ const Report = {
 
   /** 渲染图表（在 DOM 插入后调用） */
   async renderCharts() {
-    const stats = await this.getStats(this.currentPeriod);
+    const stats = this._lastStats || await this.getStats(this.currentPeriod);
+    this._lastStats = null;
     this.renderTrendChart(stats);
     this.renderCategoryChart(stats, 'expense', 'categoryChart');
     this.renderCategoryChart(stats, 'income', 'incomeCategoryChart');
