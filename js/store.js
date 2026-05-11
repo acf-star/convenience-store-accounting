@@ -16,7 +16,6 @@ const Store = {
       category: tx.category,
       product_name: tx.productName || null,
       note: tx.note || null,
-      inventory_id: tx.inventoryId || null,
       recorded_by: tx.recordedBy || null
     };
   },
@@ -30,7 +29,6 @@ const Store = {
       category: row.category,
       productName: row.product_name || '',
       note: row.note || '',
-      inventoryId: row.inventory_id || null,
       recordedBy: row.recorded_by || ''
     };
   },
@@ -97,7 +95,6 @@ const Store = {
     if (updates.category !== undefined) dbUpdates.category = updates.category;
     if (updates.productName !== undefined) dbUpdates.product_name = updates.productName;
     if (updates.note !== undefined) dbUpdates.note = updates.note;
-    if (updates.inventoryId !== undefined) dbUpdates.inventory_id = updates.inventoryId;
     if (updates.recordedBy !== undefined) dbUpdates.recorded_by = updates.recordedBy;
 
     const { data, error } = await SupabaseConfig.client

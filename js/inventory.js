@@ -193,7 +193,6 @@ const Inventory = {
       category: item.categoryId,
       productName: `进货: ${item.name} x${qty}`,
       note: `进货 ${qty} 件，单价 ¥${Utils.formatMoney(price)}`,
-      inventoryId: id,
       recordedBy: SupabaseConfig.getCurrentUser()
     });
 
@@ -268,7 +267,6 @@ const Inventory = {
       category: item.categoryId,
       productName: `销售: ${item.name} x${qty}`,
       note: `销售 ${qty} 件，单价 ¥${Utils.formatMoney(price)}`,
-      inventoryId: id,
       recordedBy: SupabaseConfig.getCurrentUser()
     });
 

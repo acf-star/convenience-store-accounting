@@ -124,7 +124,6 @@ const Transaction = {
       category: document.getElementById('txCategory').value,
       productName: document.getElementById('txProduct').value.trim(),
       note: document.getElementById('txNote').value.trim(),
-      inventoryId: null,
       recordedBy: SupabaseConfig.getCurrentUser()
     };
 
