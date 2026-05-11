@@ -63,6 +63,10 @@ const Category = {
 
   /** 删除分类 */
   async delete(id) {
+    if (this._cache.length <= 1) {
+      throw new Error('至少保留一个分类');
+    }
+
     const transactions = await Store.getTransactions();
     const inventory = await Store.getInventory();
     const usedByTx = transactions.some(t => t.category === id);

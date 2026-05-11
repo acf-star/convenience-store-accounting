@@ -128,11 +128,15 @@ const Transaction = {
       recordedBy: SupabaseConfig.getCurrentUser()
     };
 
-    await Store.addTransaction(tx);
-    this.closeForm();
-    Notify.toast(`已记录 ${tx.type === 'income' ? '收入' : '支出'} ¥${Utils.formatMoney(amount)}`);
-    await this.refreshList();
-    await App.updateHeaderSummary();
+    try {
+      await Store.addTransaction(tx);
+      this.closeForm();
+      Notify.toast(`已记录 ${tx.type === 'income' ? '收入' : '支出'} ¥${Utils.formatMoney(amount)}`);
+      await this.refreshList();
+      await App.updateHeaderSummary();
+    } catch (e) {
+      Notify.toast('保存失败：' + (e.message || '网络错误'), 'error');
+    }
   },
 
   /** 按条件筛选交易 */

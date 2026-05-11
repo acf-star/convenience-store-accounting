@@ -130,7 +130,8 @@ const Store = {
   },
 
   async saveCategories(list) {
-    await SupabaseConfig.client.from('categories').delete().neq('id', '');
+    const { error: delError } = await SupabaseConfig.client.from('categories').delete().neq('id', '');
+    if (delError) throw delError;
     if (list.length > 0) {
       const { error } = await SupabaseConfig.client
         .from('categories')
