@@ -127,7 +127,7 @@ const Store = {
   },
 
   async saveCategories(list) {
-    const { error: delError } = await SupabaseConfig.client.from('categories').delete().neq('id', '');
+    const { error: delError } = await SupabaseConfig.client.from('categories').delete().not('id', 'is', null);
     if (delError) throw delError;
     if (list.length > 0) {
       const { error } = await SupabaseConfig.client
@@ -199,13 +199,13 @@ const Store = {
   async restore(data) {
     if (data.categories) await this.saveCategories(data.categories);
     if (data.inventory) {
-      await SupabaseConfig.client.from('inventory').delete().neq('id', '');
+      await SupabaseConfig.client.from('inventory').delete().not('id', 'is', null);
       for (const item of data.inventory) {
         await this.addInventoryItem(item);
       }
     }
     if (data.transactions) {
-      await SupabaseConfig.client.from('transactions').delete().neq('id', '');
+      await SupabaseConfig.client.from('transactions').delete().not('id', 'is', null);
       for (const tx of data.transactions) {
         await this.addTransaction(tx);
       }
@@ -213,8 +213,8 @@ const Store = {
   },
 
   async clearAll() {
-    await SupabaseConfig.client.from('transactions').delete().neq('id', '');
-    await SupabaseConfig.client.from('inventory').delete().neq('id', '');
-    await SupabaseConfig.client.from('categories').delete().neq('id', '');
+    await SupabaseConfig.client.from('transactions').delete().not('id', 'is', null);
+    await SupabaseConfig.client.from('inventory').delete().not('id', 'is', null);
+    await SupabaseConfig.client.from('categories').delete().not('id', 'is', null);
   }
 };
